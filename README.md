@@ -1,38 +1,105 @@
 # Ronin Dash
 
-An open-source Android companion app for the **TVS Ronin** (2024 SE, cluster type U368), written as a replacement for the
-official TVS Connect app.
+An open-source Android companion app for the **TVS Ronin** motorcycle (2024 SE, cluster type U368). It replaces the
+official connected-vehicle app.
 
-> **Unofficial.** This project is not affiliated with, endorsed by, or connected to TVS Motor Company. "TVS" and "Ronin" are
-> their trademarks, used here only to say which motorcycle this works with. No TVS code, logos or assets are included.
+> **Unofficial.** This project is not affiliated with, endorsed by, or connected to TVS Motor Company. "TVS" and "Ronin"
+> are their trademarks and are used only to say which motorcycle this works with. No TVS code, logos or assets are included.
 
-> **Ride safely.** Don't look at or touch your phone while riding. The app is built to work without attention (sounds in the
-> helmet, the bike's own display), but you are responsible for how you use it. It's experimental software: test it parked
-> first. Crash detection and SOS are best-effort and must not be relied on as your only safety measure.
+> **Ride safely.** Don't look at or touch your phone while riding. Ronin Dash is designed to need no attention: it uses
+> sounds in the helmet and the bike's own display. You are still responsible for how you use it. This is experimental
+> software, so test it with the bike parked first. Crash detection and SOS are best-effort and must not be your only safety measure.
 
-## What it does
+## Why
 
-- Connects to the bike by itself when the ignition turns on, uses no memory or battery while the bike is off.
-- Caller name on the bike's display; answer / reject with the I button (see the exact press rules in `PROTOCOL.md` §14).
-- I button opens your phone's assistant (hold 2–3 s and let go).
-- Live data: speed, RPM, gear, throttle, fuel gauge (in bars, the way the bike really sends it), trips, temperatures, warnings.
-- Sets the bike display brightness (20–100 %), automatically from the light around you or when your assistant asks.
-- Trips, mileage from fuel flow, and crash detection with SOS (experimental).
+The official app is unreliable on this bike:
 
-Not yet done: much of the design in `tools/dashboard-mock.html` (the reviewed mock-up) is still being ported to the app.
+- The I button often does nothing.
+- The voice assistant starts by itself.
+- Missed-call counts show garbage like "99".
+- The fuel reading is wrong.
 
-## Layout
+Ronin Dash talks to the cluster directly over Bluetooth LE using a protocol documented from scratch
+([docs/protocol.md](docs/protocol.md)). It fixes those problems and keeps the app out of the way.
 
-| Path | What |
+## Features
+
+| | |
 |---|---|
-| `android/` | The app (Kotlin, Jetpack Compose). `cd android && ./gradlew assembleDebug` |
-| `PROTOCOL.md` | The bike's Bluetooth protocol, worked out from captures and bike tests |
-| `PROJECT_STATUS.md` | Design notes and progress |
-| `tools/dashboard-mock.html` | Browser mock-up of the app, with the list of planned fixes |
-| `tools/ronin_test.py` | Frame decoder / test console |
-| `tools/data_guard.py` | Checks decoded data for impossible values |
-| `tools/make_sounds.py`, `tools/make_voice.py` | Generate the helmet sounds and voice clips |
+| **Connection** | Connects by itself when the ignition turns on, like an intercom. Nothing runs while the bike is off |
+| **Calls** | Caller name on the cluster. Answer or reject with the I button |
+| **Assistant** | Hold the I button for 2–3 s to open the phone's voice assistant. Assistants can change only display brightness |
+| **Live data** | Speed, RPM, gear, throttle, fuel gauge (in bars, as the bike sends it), temperatures, battery, warnings |
+| **Display brightness** | 20–100 %, set automatically from ambient light when the phone is mounted, or by hand |
+| **Trips** | Trip log with distance, fuel estimate and route map |
+| **Safety** | Side-stand-down-while-moving alert. Crash detection with an SOS countdown *(experimental)* |
+| **Audio** | Short earcons and optional spoken cues ([Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) voice, offline) |
 
-## Voice
+## Roadmap
 
-The spoken clips in `tools/voice/` are generated with [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0).
+### ✅ Done
+
+- **Protocol decoded:**
+  - transport, XOR encoding and checksum
+  - all bike → phone frame types
+  - phone → bike status, text, caller and settings frames
+- **Verified on the bike:**
+  - speed, RPM, gear, telltales, clutch and side stand
+  - I button and Mode events, with exact press timing
+  - call accept and reject
+  - display brightness write and readback
+  - ride mode readback
+  - fuel gauge bars
+- **Android app:**
+  - auto-connect background service
+  - live ride screen and settings
+  - trip recording
+  - crash detection
+  - guided bike-test screen and debug logging
+- **Official-app bugs found and avoided:**
+  - assistant auto-wake
+  - call-button matching
+  - fuel read as a percentage
+  - caller-frame flooding linked to the "99" count
+- **Sound design:** earcon pack and voice clips.
+
+### 🚧 In progress
+
+- Porting the reviewed UI redesign, about 30 changes designed in the browser mock-up, into the app.
+- A full real-world ride with Ronin Dash as the only app.
+
+### 📋 Planned
+
+- [ ] Turn-by-turn arrows on the cluster: map the navigation pictogram ids (§7 of the protocol).
+- [ ] Unread SMS / WhatsApp counts on the cluster, and confirm the "99" fix.
+- [ ] Overspeed warning on the cluster.
+- [ ] Fuel used, measured from the engine's injection counter and calibrated against fill-ups.
+- [ ] Faster recovery when call audio on an intercom drops the bike link.
+- [ ] Signed release builds.
+- [ ] Choose and add a licence.
+
+## Repository layout
+
+| Path | Contents |
+|---|---|
+| `android/` | The app (Kotlin, Jetpack Compose) |
+| `docs/protocol.md` | The cluster's BLE protocol |
+| `tools/ronin_test.py` | BLE test console for a Mac: send and decode frames |
+| `tools/btsnoop_parse.py` | Extracts cluster frames from an Android HCI snoop log |
+| `tools/data_guard.py` | Plausibility filter for decoded values, with a glitch-injection test |
+| `tools/make_sounds.py`, `tools/make_voice.py` | Generate the earcons (`tools/sounds/`) and voice clips (`tools/voice/`) |
+
+## Building
+
+Requires JDK 17 and the Android SDK.
+
+```bash
+cd android && ./gradlew assembleDebug
+```
+
+The APK is written to `android/app/build/outputs/apk/debug/`. On first launch, pair the bike in Android's Bluetooth
+settings using the passkey shown on the cluster. Then choose it in **Settings**.
+
+## Credits
+
+Voice clips: [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0).

@@ -32,3 +32,10 @@ android/local.properties
 android/.idea/
 *.iml
 .kotlin/
+
+# Personal working notes (kept locally, not published)
+/PROJECT_STATUS.md
+/PROTOCOL.md
+tools/dashboard-mock.html
+tools/ronin-test-guide.html
+tools/bike_test_checklist.txt

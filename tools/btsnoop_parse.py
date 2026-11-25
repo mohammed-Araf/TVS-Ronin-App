@@ -2,7 +2,7 @@
 """
 Extract Ronin cluster traffic from an Android btsnoop_hci.log.
 
-    .venv/bin/python tools/btsnoop_parse.py captures/btsnoop_hci.log > captures/frames.csv
+    .venv/bin/python tools/btsnoop_parse.py btsnoop_hci.log > frames.csv
 
 Prints CSV: time, dir (RX = bike->phone notify, TX = phone->bike write), att_handle, raw, decoded, checksum_ok
 """

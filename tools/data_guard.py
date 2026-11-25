@@ -13,12 +13,13 @@ So every field goes through:
   4. Hold:    while a value is rejected, the last good one stays; after 3 s with no good value the field
               becomes unknown ("–"), never a made-up or stale number.
 
-Limits were checked against every real frame captured so far (ride1, ride2, call1), including a real
+Limits were checked against every real frame captured so far (three sessions: two rides and a call), including a real
 neutral rev to 8,726 rpm and engine temperature reaching 134 °C on a hot ride, so they don't reject real data.
 
     .venv/bin/python tools/data_guard.py              # replay real captures + glitch-injection test
 """
 import csv
+import glob
 import datetime as dt
 import random
 import sys
@@ -35,12 +36,12 @@ LIMITS = {
     "odo":     (0, 999999, None, 2),     # km, 1 km resolution on this cluster; checked separately
     "range":   (0, 999, 1, 15),          # km (falls ~1 km per km ridden; a refuel jump gets confirmed)
 }
-# RPM per km/h in gear, clutch out (median from ride2). Checked from 3rd gear and 20 km/h up, where it's tight.
+# RPM per km/h in gear, clutch out (median from a real ride). Checked from 3rd gear and 20 km/h up, where it's tight.
 # In the app this table is learned per bike from its own rides (other sprockets/tyres), these are the starting values.
 RATIO = {1: (112, 400), 2: (100, 200), 3: (70, 150), 4: (62, 115), 5: (55, 76)}   # rpm per km/h (real min/max seen + margin)
 
 
-# Top speed in each gear (owner: 42 / 76 / 92 / 114 km/h at the ~9,000 rpm limit; 5th is open). A gear reading at a speed
+# Top speed in each gear (42 / 76 / 92 / 114 km/h at the ~9,000 rpm limit; 5th is open). A gear reading at a speed
 # well above that gear's top can't be right, whatever the RPM says (catches a wrong gear while the RPM reading is missing).
 GEAR_TOP = {1: 42, 2: 76, 3: 92, 4: 114}
 
@@ -232,7 +233,7 @@ def run(frames, glitch_rate=0.0, seed=1):
 
 
 if __name__ == "__main__":
-    paths = sys.argv[1:] or ["captures/frames_ride1.csv", "captures/frames_ride2b.csv", "captures/frames_call1.csv"]
+    paths = sys.argv[1:] or sorted(glob.glob("captures/frames_*.csv"))
     ok = True
     tot = {"inj": 0, "one": 0}
     for p in paths:

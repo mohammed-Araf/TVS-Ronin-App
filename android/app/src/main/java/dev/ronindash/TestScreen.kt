@@ -74,7 +74,7 @@ private val STEPS = listOf(
         listOf("Yes", "No", "Skip"), waitS = 20),
     Step("Call: answer", "Only if someone can call you. When the caller shows on the bike, HOLD I for 3 s.\n\nWas it answered?", listOf("Yes", "No", "Skip")),
     Step("Call: reject", "Only if someone can call. When the caller shows, press I once.\n\nWas it rejected?", listOf("Yes", "No", "Skip")),
-    Step("Finished", "Ignition OFF. At home, plug the phone into the Mac and tell Claude: everything is in the log file.", listOf("Finish")),
+    Step("Finished", "Ignition OFF. Everything is saved in the ride log file (Android/data/dev.ronindash/files/logs).", listOf("Finish")),
 )
 
 @OptIn(ExperimentalLayoutApi::class)

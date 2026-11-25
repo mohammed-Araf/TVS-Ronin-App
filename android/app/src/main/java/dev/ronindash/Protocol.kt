@@ -4,7 +4,7 @@ import java.text.Normalizer
 import java.util.Calendar
 import java.util.UUID
 
-/** Bars on the Ronin's fuel gauge when full (9, owner confirmed 2026-11-25; live byte 6 reads 9 with a full tank). */
+/** Bars on the Ronin's fuel gauge when full (9; byte 6 reads 9 with a full tank). */
 const val FUEL_BARS = 9
 
 /** TVS Ronin (U368) cluster protocol. Full notes: PROTOCOL.md in the project root. */
@@ -69,7 +69,7 @@ object Protocol {
     }
 
     /**
-     * `5A F1` settings, dated form (the one the bike obeys; tested on the bike 2026-11-25). level = display brightness
+     * `5A F1` settings, dated form (the one the bike obeys; verified on the bike). level = display brightness
      * 2–10 = 20–100 %. The bike accepts 1 but its menu has no 10 % and the cluster misbehaves, so never send it (0 and 11+ are ignored). The bike reports it back in type 0x11 byte 17, high nibble.
      * Byte 3 (speedo page) and byte 12 (trip reset) stay 0 so nothing else changes.
      */
@@ -129,7 +129,7 @@ data class BikeState(
     val frames: Int = 0, val zeroFrames: Int = 0, val lastFrameMs: Long = 0,
 ) {
     /** Live byte 6 is the fuel gauge in BARS, not a percent (it read 9 with a full tank all day; the official app shows that as
-     *  "9 %, low fuel", a bug). Manual: 1 bar ≈ 3.2 L left, 0 bars ≈ 2 L. FUEL_BARS = bars on a full gauge (9, owner confirmed). */
+     *  "9 %, low fuel", a bug). Manual: 1 bar ≈ 3.2 L left, 0 bars ≈ 2 L. FUEL_BARS = bars on a full gauge (9). */
     val fuelPct: Int get() = (fuelBars * 100 / FUEL_BARS).coerceIn(0, 100)
 
     fun update(u: IntArray): BikeState {

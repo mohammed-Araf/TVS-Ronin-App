@@ -12,7 +12,7 @@ import kotlin.math.max
 import kotlin.math.sqrt
 
 /**
- * Fuel model for the Ronin (225 cc), from the owner's real figures:
+ * Fuel model for the Ronin (225 cc), from real-world figures:
  *   steady 60 km/h → 44 km/l, steady 120 km/h → 32 km/l.
  * Then corrected by RPM: revving higher than the top-gear RPM for that speed (lower gear, hard acceleration)
  * burns more. Idle burns ~0.15 L/h. It's an estimate; fill-up calibration can refine it later.
