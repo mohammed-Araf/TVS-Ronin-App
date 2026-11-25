@@ -1,0 +1,692 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Trip map</title>
+<link href="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@5.24.1/dist/maplibre-gl.js"></script>
+<style>
+  /* Clean: neutral surfaces, one accent colour, thin borders, no glow. Theme comes from the app. */
+  :root {
+    --bg: #f6f6f7; --card: #ffffff; --sub: #f0f0f2; --line: #e6e6ea; --fg: #16171a; --muted: #6b6d74;
+    --accent: #e8930c; --on-accent: #ffffff;
+  }
+  :root.dark { --bg: #0f1012; --card: #18191c; --sub: #222327; --line: #2a2b30; --fg: #ededef; --muted: #9a9ba1; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+  .app { display: flex; flex-direction: column; height: 100%; }
+  .mapwrap { position: relative; flex: 1; min-height: 240px; }
+  #map { position: absolute; inset: 0; }
+  .bar { position: absolute; left: 12px; right: 12px; top: calc(12px + env(safe-area-inset-top)); display: flex; gap: 8px; flex-wrap: wrap; z-index: 2; }
+  .seg { position: relative; display: flex; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 2px; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .seg button { position: relative; z-index: 1; border: 0; background: none; color: var(--muted); font: 500 13px system-ui; padding: 6px 10px; border-radius: 8px; min-height: 34px; }
+  .seg button.on { color: var(--fg); }
+  .seg .thumb { position: absolute; top: 2px; bottom: 2px; left: 0; border-radius: 8px; background: var(--sub); box-shadow: 0 1px 2px rgba(0,0,0,.12);
+    transition: transform .38s cubic-bezier(.3,1.25,.5,1), width .38s cubic-bezier(.3,1.25,.5,1); }
+  .sheet { flex: none; max-height: 56%; overflow-y: auto; padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 12px; background: var(--bg);
+    /* Overlay look: the panel rides up over the map with rounded top corners, no hard edges. */
+    position: relative; z-index: 4; margin-top: -22px; border-radius: 22px 22px 0 0; box-shadow: 0 -6px 24px rgba(0,0,0,.22); }
+  .sheet::before { content: ""; display: block; flex: none; width: 36px; height: 4px; border-radius: 2px; background: var(--line); margin: -4px auto 0; }
+  .card { background: var(--card); border: 0; border-radius: 16px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  :root.dark .card { box-shadow: none; }
+  .readout { display: grid; grid-template-columns: auto 1fr auto auto; gap: 12px; align-items: center; }
+  .readout b { display: block; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .readout span { font-size: 12px; color: var(--muted); }
+  .readout .big b { font-size: 52px; line-height: 1; }
+  .readout .mid { display: flex; flex-direction: column; gap: 6px; }
+  .readout .mid b { font-size: 20px; }
+  .readout .hl b { color: var(--accent); }
+  .readout .fuel { text-align: right; }
+  .readout .fuel b { font-size: 20px; }
+  .readout .fuel span { display: block; }
+  .readout .gear { width: 76px; height: 76px; border-radius: 16px; background: var(--sub); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; }
+  .readout .gear b { font-size: 44px; line-height: 1; color: var(--accent); }
+  .readout .gear span { font-size: 11px; margin-top: 2px; }
+  .readout b .roll, .readout b .roll span { font-size: inherit; color: inherit; margin: 0; }
+  .meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+  .meta b { color: var(--fg); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .meta a { color: var(--accent); text-decoration: none; }
+  .gauges, .tiles { display: none; }
+  .chartcard { padding: 12px 12px 10px; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin: 0 2px 6px; align-items: center; }
+  .legend i { display: inline-block; width: 12px; height: 2px; margin-right: 6px; vertical-align: middle; }
+  #chart { width: 100%; height: 110px; display: block; touch-action: none; cursor: ew-resize; }
+  .controls { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+  .play { width: 44px; height: 44px; border-radius: 50%; border: 0; flex: none; background: var(--accent); color: var(--on-accent); font-size: 15px; }
+  .chip { border: 1px solid var(--line); background: var(--card); color: var(--muted); font: 500 13px system-ui; border-radius: 8px; padding: 7px 10px; min-height: 36px; }
+  .chip.on { background: var(--sub); color: var(--fg); }
+  .elapsed { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .grow { flex: 1; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 8px; }
+  .tile b { display: block; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tile span { font-size: 12px; color: var(--muted); }
+    h3 { margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--muted); }
+  /* Motion: cards rise in, controls ease, numbers count. */
+  .card { animation: rise .45s cubic-bezier(.2,.7,.2,1) both; }
+  .card:nth-child(2) { animation-delay: .06s; } .card:nth-child(3) { animation-delay: .12s; }
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  .seg button, .chip, .credits button { transition: color .25s, background-color .2s, transform .18s cubic-bezier(.3,1.4,.5,1); }
+  .seg button:active, .chip:active, .credits button:active { transform: scale(.9); }
+  .play { position: relative; transition: transform .2s cubic-bezier(.3,1.5,.5,1), background-color .2s; }
+  .play:active { transform: scale(.86); }
+  .play svg { position: absolute; inset: 0; margin: auto; width: 18px; height: 18px; fill: currentColor;
+    transition: transform .35s cubic-bezier(.3,1.3,.5,1), opacity .25s; }
+  .play .ic-pause { transform: scale(.3) rotate(-90deg); opacity: 0; }
+  .play.on .ic-play { transform: scale(.3) rotate(90deg); opacity: 0; }
+  .play.on .ic-pause { transform: none; opacity: 1; }
+  #cur, #curDot { transition: none; }
+  #chart.glide #cur, #chart.glide #curDot { transition: transform .5s cubic-bezier(.2,.7,.2,1); }
+  .readout b { transition: color .2s; }
+  /* Rolling digits: new value slides in from below when it goes up, from above when it goes down. */
+  .roll { display: inline-block; position: relative; overflow: hidden; vertical-align: bottom; height: 1.2em; line-height: 1.2em; }
+  .roll > span { display: block; }
+  .roll > .old { position: absolute; left: 0; top: 0; }
+  .roll.up > .new { animation: inUp .45s cubic-bezier(.2,.7,.2,1) both; } .roll.up > .old { animation: outUp .45s cubic-bezier(.2,.7,.2,1) both; }
+  .roll.down > .new { animation: inDown .45s cubic-bezier(.2,.7,.2,1) both; } .roll.down > .old { animation: outDown .45s cubic-bezier(.2,.7,.2,1) both; }
+  @keyframes inUp { from { transform: translateY(100%); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes outUp { to { transform: translateY(-100%); opacity: 0; } }
+  @keyframes inDown { from { transform: translateY(-100%); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes outDown { to { transform: translateY(100%); opacity: 0; } }
+  /* Map credits: our own (i) pill. Opens and closes slowly enough to see, folds back by itself. */
+  .credits { position: absolute; right: 12px; bottom: 36px; z-index: 3; display: flex; flex-direction: row-reverse; align-items: center;
+    height: 32px; width: 32px; overflow: hidden; border-radius: 16px; background: var(--card); border: 1px solid var(--line);
+    box-shadow: 0 1px 4px rgba(0,0,0,.18); transition: width .6s cubic-bezier(.4,0,.2,1); }
+  .credits button { flex: none; width: 30px; height: 30px; border: 0; background: none; color: var(--fg); font: 600 15px Georgia, serif; font-style: italic; }
+  .credits span { white-space: nowrap; font-size: 11px; color: var(--muted); padding-left: 12px; opacity: 0; transition: opacity .25s ease; }
+  .credits.open span { opacity: 1; transition: opacity .4s ease .25s; }
+
+  /* Share sheet: slides up over a dimmed page, live card preview, style + format, Share / Save. */
+  .shareov { position: fixed; inset: 0; z-index: 20; visibility: hidden; pointer-events: none; }
+  .shareov.open { visibility: visible; pointer-events: auto; }
+  .shareov .dim { position: absolute; inset: 0; background: rgba(0,0,0,.55); opacity: 0; transition: opacity .35s ease; }
+  .shareov.open .dim { opacity: 1; }
+  .sharesheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: 96%; display: flex; flex-direction: column; gap: 12px;
+    background: var(--bg); border-radius: 20px 20px 0 0; padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+    transform: translateY(100%); transition: transform .45s cubic-bezier(.2,.8,.2,1); box-shadow: 0 -8px 30px rgba(0,0,0,.25); }
+  .shareov.open .sharesheet { transform: none; }
+  .shareov.closing .sharesheet { transition-duration: .32s; transition-timing-function: cubic-bezier(.4,0,1,1); }
+  .grab { width: 40px; height: 4px; border-radius: 2px; background: var(--line); margin: 2px auto 0; flex: none; }
+  .sharehead { display: flex; align-items: center; justify-content: space-between; }
+  .sharehead b { font-size: 17px; font-weight: 600; }
+  .sharehead .x { width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--sub); color: var(--muted); font-size: 15px;
+    transition: transform .18s cubic-bezier(.3,1.4,.5,1); }
+  .sharehead .x:active { transform: scale(.88); }
+  .cardwrap { flex: 1 1 auto; min-height: 0; display: flex; justify-content: center; align-items: center; }
+  #cardCv { display: block; max-width: 100%; max-height: 58vh; border-radius: 14px; box-shadow: 0 6px 24px rgba(0,0,0,.28);
+    transition: opacity .2s ease, transform .35s cubic-bezier(.3,1.3,.5,1); }
+  .shareov.open #cardCv { animation: cardIn .55s cubic-bezier(.2,.9,.3,1.15) .12s both; }
+  #cardCv.swap { opacity: .25; transform: scale(.96); }
+  @keyframes cardIn { from { opacity: 0; transform: translateY(24px) scale(.92); } to { opacity: 1; transform: none; } }
+  .shareopts { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; flex: none; }
+  .shareact { display: flex; gap: 10px; flex: none; }
+  .shareact button { flex: 1; min-height: 48px; border-radius: 12px; font: 600 15px system-ui; transition: transform .18s cubic-bezier(.3,1.4,.5,1), background-color .2s; }
+  .shareact button:active { transform: scale(.95); }
+  .shareact .save { border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+  .shareact .go { border: 0; background: var(--accent); color: var(--on-accent); }
+  @media (prefers-reduced-motion: reduce) { .sharesheet, .shareov .dim, #cardCv { transition: none !important; animation: none !important; }
+  }
+  @media (prefers-reduced-motion: reduce) { .roll > span { animation: none !important; } .roll > .old { display: none; } .card { animation: none; } .seg button, .chip, .play, .play svg, .seg .thumb, .credits, #chart.glide #cur, #chart.glide #curDot { transition: none !important; } }
+  /* Wide screens: map runs edge to edge, the panel floats over it as a rounded card (same overlay look as the phone). */
+  @media (min-width: 900px) {
+    .app { position: relative; }
+    .mapwrap { position: absolute; inset: 0; }
+    .sheet { position: absolute; top: 12px; right: 12px; bottom: 12px; width: 400px; max-height: none; margin: 0;
+      border-radius: 22px; box-shadow: 0 10px 34px rgba(0,0,0,.30); }
+    .sheet::before { display: none; }
+    .credits { bottom: 14px; right: 426px; }
+    .sharesheet { left: 50%; right: auto; width: 520px; margin-left: -260px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="mapwrap">
+    <div id="map"></div>
+    <div class="credits" id="credits"><button aria-label="Map credits">i</button><span id="creditText"></span></div>
+    <div class="bar">
+      <div class="seg" id="metric"><button data-m="s" class="on">Speed</button><button data-m="k">Mileage</button><button data-m="r">RPM</button></div>
+      <div class="seg" id="base"><button data-b="sat" class="on">Satellite</button><button data-b="street">Street</button></div>
+    </div>
+  </div>
+
+  <div class="sheet">
+    <!-- selected point -->
+    <div class="card">
+      <div class="readout">
+        <div class="big"><b id="vSpeed">0</b><span>km/h</span></div>
+        <div class="mid">
+          <div><b id="vRpm">0</b><span>rpm</span></div>
+          <div class="hl"><b id="tKmpl">–</b><span>km/l so far</span></div>
+        </div>
+        <div class="fuel"><b id="tCost">–</b><span id="tFuel">0.00 L</span></div>
+        <div class="gear"><b id="vGear">N</b><span>gear</span></div>
+      </div>
+      <div class="meta">
+        <span><b id="when">--:--</b></span>
+        <span><b id="kmFrom">0.0</b> km</span>
+        <span>Alt <b id="tAlt">–</b></span>
+      </div>
+    </div>
+
+    <!-- timeline chart + animation -->
+    <div class="card chartcard">
+      <div class="legend"><span><i style="background:var(--accent)"></i>Speed</span>
+        <span><i style="background:var(--muted)"></i>RPM</span></div>
+      <svg id="chart" preserveAspectRatio="none"></svg>
+      <div class="controls">
+        <button class="play" id="play" aria-label="Play ride"><svg class="ic-play" viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg><svg class="ic-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4.2" height="14" rx="1.2"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.2"/></svg></button>
+        <span class="elapsed" id="elapsed">0:00</span>
+        <span class="grow"></span>
+        <button class="chip" id="share">Share</button>
+      </div>
+    </div>
+
+    <!-- whole trip -->
+    <div class="card">
+      <h3>Whole trip</h3>
+      <div class="stats" id="stats"></div>
+    </div>
+  </div>
+</div>
+
+<div class="shareov" id="shareov" aria-hidden="true">
+  <div class="dim" id="shareDim"></div>
+  <div class="sharesheet" role="dialog" aria-label="Share ride">
+    <div class="grab"></div>
+    <div class="sharehead"><b>Share ride</b><button class="x" id="shareClose" aria-label="Close">✕</button></div>
+    <div class="cardwrap"><canvas id="cardCv"></canvas></div>
+    <div class="shareopts">
+      <div class="seg" id="cStyle"><button data-v="dark" class="on">Dark</button><button data-v="light">Light</button><button data-v="accent">Colour</button></div>
+      <div class="seg" id="cFmt"><button data-v="post" class="on">Post</button><button data-v="story">Story</button></div>
+      <div class="seg" id="cMap"><button data-v="map" class="on">Map</button><button data-v="sat">Satellite</button><button data-v="off">No map</button></div>
+    </div>
+    <div class="shareact"><button class="save" id="cSave">Save</button><button class="go" id="cShare">Share</button></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // ---------------- data: [lon, lat, alt, kmh, rpm, gear, kmpl, t, kmFromStart, litresSoFar]
+  let D;
+  try { D = JSON.parse(window.Android.data()); } catch (e) { D = demo(); }
+  const P = D.points.filter(p => p[0] && p[1]);
+  const S = D.summary || {};
+  let TH = null;
+  try { TH = JSON.parse(window.Android.theme()); } catch (e) {
+    // Outside the app (browser mock / preview): ?dark=1&accent=%23E8930C&share=1
+    const Q = new URLSearchParams(location.search);
+    if (Q.has("dark") || Q.has("accent") || Q.has("share"))
+      TH = { dark: Q.get("dark") === "1", accent: Q.get("accent") || "", share: Q.get("share") === "1" };
+  }
+  const dark = TH ? TH.dark : matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.classList.toggle("dark", dark);
+  if (TH && TH.accent) document.documentElement.style.setProperty("--accent", TH.accent);
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const ACC = css("--accent"), MUTED = css("--muted"), LINE = css("--line");
+  const N = P.length;
+  const $ = id => document.getElementById(id);
+
+  // ---------------- route colour scales (green → blue → red)
+  const SCALES = {
+    s: { key: "s", stops: [[20, "#22c55e"], [55, "#3b82f6"], [95, "#ef4444"]], unit: "km/h", h: 6 },
+    k: { key: "k", stops: [[25, "#ef4444"], [35, "#3b82f6"], [45, "#22c55e"]], unit: "km/l", h: 5 },
+    r: { key: "r", stops: [[2000, "#22c55e"], [4500, "#3b82f6"], [7500, "#ef4444"]], unit: "rpm", h: 0.05 },
+  };
+  let metric = "s", base = "sat";
+
+  const colorExpr = m => { const e = ["interpolate", ["linear"], ["get", SCALES[m].key]]; SCALES[m].stops.forEach(([v, c]) => e.push(v, c)); return e; };
+
+  // ---------------- geometry (each segment carries its index so the animation can reveal it)
+  const lines = [];
+  for (let i = 1; i < N; i++) {
+    const a = P[i - 1], b = P[i], props = { i, s: b[3], r: b[4], k: b[6] || a[6] || 0 };
+    lines.push({ type: "Feature", properties: props, geometry: { type: "LineString", coordinates: [[a[0], a[1]], [b[0], b[1]]] } });
+  }
+
+  // ---------------- map (no API key)
+  const SAT = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+  const DEM = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
+  const style = b => b === "street" ? "https://tiles.openfreemap.org/styles/liberty" :
+    { version: 8, sources: { sat: { type: "raster", tiles: [SAT], tileSize: 256, maxzoom: 17, attribution: "" } },
+      layers: [{ id: "sat", type: "raster", source: "sat" }], sky: {} };
+  const bounds = new maplibregl.LngLatBounds(); P.forEach(p => bounds.extend([p[0], p[1]]));
+  const WIDE = () => innerWidth >= 900;
+  const PAD = () => WIDE() ? { top: 70, bottom: 40, left: 40, right: 440 } : { top: 70, bottom: 62, left: 30, right: 30 };
+  const map = new maplibregl.Map({ container: "map", style: style(base), bounds: N ? bounds : undefined,
+    fitBoundsOptions: { padding: PAD() }, pitch: 55, maxPitch: 80, attributionControl: false });
+
+  window.tripMap = map; // handy for debugging in a browser console
+  let revealUpTo = Infinity;
+  function addLayers() {
+    if (!map.getSource("dem")) map.addSource("dem", { type: "raster-dem", tiles: [DEM], tileSize: 256, maxzoom: 12, encoding: "terrarium" });
+    map.setTerrain({ source: "dem", exaggeration: 1.5 });
+    if (!map.getSource("route")) map.addSource("route", { type: "geojson", data: { type: "FeatureCollection", features: lines } });
+    map.addLayer({ id: "ghost", type: "line", source: "route", paint: { "line-color": "#ffffff", "line-width": 2, "line-opacity": 0.35 } });
+    map.addLayer({ id: "route-casing", type: "line", source: "route", paint: { "line-color": "#ffffff", "line-width": 7, "line-opacity": .9 },
+      layout: { "line-cap": "round", "line-join": "round" } });
+    map.addLayer({ id: "route", type: "line", source: "route", paint: { "line-color": colorExpr(metric), "line-width": 4 },
+      layout: { "line-cap": "round", "line-join": "round" } });
+    applyReveal();
+  }
+  map.on("style.load", addLayers);
+  // Map credits pill: tap (i) to open, tap again or wait 5 s to close.
+  const CREDITS = { sat: "Imagery © Esri · Terrain © Mapzen/AWS", street: "© OpenFreeMap · © OpenStreetMap · Mapzen" };
+  const credits = $("credits"); let creditTimer = 0;
+  $("creditText").textContent = CREDITS.sat;
+  // Animate the real width (measured), so the whole 0.6 s of motion is visible both ways.
+  const setCredits = open => {
+    credits.classList.toggle("open", open);
+    credits.style.width = open ? Math.min(credits.scrollWidth + 2, credits.parentElement.clientWidth - 24) + "px" : "32px";
+    clearTimeout(creditTimer);
+    if (open) creditTimer = setTimeout(() => setCredits(false), 5000);
+  };
+  credits.querySelector("button").onclick = () => setCredits(!credits.classList.contains("open"));
+
+  function applyReveal() {
+    const f = revealUpTo === Infinity ? null : ["<=", ["get", "i"], revealUpTo];
+    ["route", "route-casing"].forEach(id => map.getLayer(id) && map.setFilter(id, f));
+  }
+
+  function pin(p, color) {
+    const el = document.createElement("div");
+    el.style.cssText = `width:12px;height:12px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)`;
+    return new maplibregl.Marker({ element: el }).setLngLat([p[0], p[1]]).addTo(map);
+  }
+  if (N) { pin(P[0], "#22c55e"); pin(P[N - 1], "#ef4444"); }
+  const headEl = document.createElement("div");
+  headEl.style.cssText = `width:18px;height:18px;border-radius:50%;background:#fff;border:4px solid ${ACC};box-shadow:0 1px 4px rgba(0,0,0,.45)`;
+  const head = N ? new maplibregl.Marker({ element: headEl }).setLngLat([P[0][0], P[0][1]]).addTo(map) : null;
+
+  // Tap the route: jump to the nearest recorded point.
+  map.on("click", e => {
+    let best = -1, bd = 1e9;
+    for (let i = 0; i < N; i++) {
+      const q = map.project([P[i][0], P[i][1]]), d = (q.x - e.point.x) ** 2 + (q.y - e.point.y) ** 2;
+      if (d < bd) { bd = d; best = i; }
+    }
+    if (best >= 0 && bd < 50 * 50) { stop(); chart.classList.add("glide"); select(best, false); clearTimeout(chart._g); chart._g = setTimeout(() => chart.classList.remove("glide"), 520); map.easeTo({ center: [P[best][0], P[best][1]], duration: 600 }); }
+  });
+
+  // ---------------- timeline chart (speed area + RPM line)
+  const chart = $("chart");
+  const maxS = Math.max(60, ...P.map(p => p[3])), maxR = Math.max(4000, ...P.map(p => p[4]));
+  function drawChart() {
+    const W = chart.clientWidth || 300, H = chart.clientHeight || 120;
+    chart.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    const x = i => N > 1 ? i / (N - 1) * W : 0, ys = v => H - 6 - v / maxS * (H - 14), yr = v => H - 6 - v / maxR * (H - 14);
+    const step = Math.max(1, Math.floor(N / W));
+    let sp = "", rp = "";
+    for (let i = 0; i < N; i += step) { sp += `${i ? "L" : "M"}${x(i).toFixed(1)},${ys(P[i][3]).toFixed(1)}`; rp += `${i ? "L" : "M"}${x(i).toFixed(1)},${yr(P[i][4]).toFixed(1)}`; }
+    const grid = [0.33, 0.66].map(f => `<line x1="0" x2="${W}" y1="${(H * f).toFixed(0)}" y2="${(H * f).toFixed(0)}" stroke="${LINE}"/>`).join("");
+    chart.innerHTML = `<defs><clipPath id="cp"><rect id="cpr" x="0" y="0" width="${W}" height="${H}"/></clipPath></defs>
+      ${grid}
+      <path d="${sp}" fill="none" stroke="${MUTED}" stroke-opacity=".25" stroke-width="1.5"/>
+      <g clip-path="url(#cp)">
+        <path d="${sp}L${W},${H}L0,${H}Z" fill="${ACC}" fill-opacity=".10"/>
+        <path d="${rp}" fill="none" stroke="${MUTED}" stroke-width="1" stroke-opacity=".7"/>
+        <path d="${sp}" fill="none" stroke="${ACC}" stroke-width="2"/></g>
+      <line id="cur" x1="0" x2="0" y1="0" y2="${H}" stroke="${css("--fg")}" stroke-width="1" opacity=".6"/>
+      <circle id="curDot" r="4.5" fill="${css("--card")}" stroke="${ACC}" stroke-width="2.5"/>`;
+    chart._x = x; chart._ys = ys; chart._W = W;
+  }
+  drawChart();
+  addEventListener("resize", () => { drawChart(); select(cur, false); });
+
+  const scrubAt = ev => { const r = chart.getBoundingClientRect(); return Math.round(Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * (N - 1)); };
+  chart.addEventListener("pointerdown", ev => { stop(); chart.setPointerCapture(ev.pointerId); select(scrubAt(ev), false); });
+  chart.addEventListener("pointermove", ev => { if (chart.hasPointerCapture(ev.pointerId)) select(scrubAt(ev), false); });
+
+  // ---------------- readout for one moment of the ride
+  let cur = 0;
+  const fmtClock = t => t > 1e11 ? new Date(t).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) : "--:--";
+  function select(i, camera) {
+    if (!N) return;
+    cur = Math.max(0, Math.min(N - 1, i));
+    const p = P[cur], gear = p[5];
+    $("when").textContent = fmtClock(p[7]);
+    $("kmFrom").textContent = (p[8] || 0).toFixed(1);
+    tweenNum($("vSpeed"), Math.round(p[3]));
+    tweenNum($("vRpm"), p[4]);
+    rollTo($("vGear"), gear > 0 ? String(gear) : "N", gear);
+    const km = p[8] || 0, L = p[9] || 0;
+    $("tKmpl").textContent = L > 0.001 && km > 0.05 ? (km / L).toFixed(1) + " km/l" : "–";
+    // Fuel cost so far sits beside the gear; litres underneath (litres alone if no fuel price is set).
+    if (D.fuelPrice) { tweenNum($("tCost"), Math.round(L * D.fuelPrice), "₹"); $("tFuel").textContent = L.toFixed(2) + " L"; }
+    else { $("tCost").textContent = L.toFixed(2); $("tFuel").textContent = "litres"; }
+    $("tAlt").textContent = Math.round(p[2]) + " m";
+    const t0 = P[0][7], el = Math.max(0, (p[7] - t0) / 1000);
+    $("elapsed").textContent = Math.floor(el / 3600) ? `${Math.floor(el / 3600)}:${String(Math.floor(el / 60) % 60).padStart(2, "0")}:${String(Math.floor(el % 60)).padStart(2, "0")}` : `${Math.floor(el / 60)}:${String(Math.floor(el % 60)).padStart(2, "0")}`;
+    if (head) head.setLngLat([p[0], p[1]]);
+    if (chart._x) {
+      const x = chart._x(cur);
+      $("cur").style.transform = `translateX(${x}px)`;
+      $("curDot").style.transform = `translate(${x}px, ${chart._ys(p[3])}px)`;
+      $("cpr").setAttribute("width", playing ? x : chart._W);
+    }
+    if (camera) {
+      const q = P[Math.min(N - 1, cur + 6)];
+      const br = Math.atan2((q[0] - p[0]) * Math.cos(p[1] * Math.PI / 180), q[1] - p[1]) * 180 / Math.PI;
+      map.jumpTo({ center: [p[0], p[1]], zoom: 15.5, pitch: 62, padding: { top: map.getContainer().clientHeight * 0.4, bottom: 0, left: 0, right: WIDE() ? 420 : 0 }, bearing: q !== p && isFinite(br) ? smoothBearing(br) : map.getBearing() });
+    }
+  }
+  // Gear and similar values roll: up when the number rises, down when it falls.
+  function rollTo(el, text, num) {
+    if (el._v === text) return;
+    const prev = el._n ?? num; el._v = text; el._n = num;
+    if (el._v0 === undefined || reduce) { el._v0 = text; el.textContent = text; return; }
+    const old = el.querySelector(".new")?.textContent ?? el.textContent;
+    el.innerHTML = "";
+    const r = document.createElement("span"); r.className = "roll " + (num >= prev ? "up" : "down");
+    const o = document.createElement("span"); o.className = "old"; o.textContent = old;
+    const n = document.createElement("span"); n.className = "new"; n.textContent = text;
+    r.append(o, n); el.append(r);
+  }
+  // Count numbers to their new value (instant while the ride animation is playing).
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function tweenNum(el, to, pre = "") {
+    const from = el._num ?? 0; el._num = to;
+    cancelAnimationFrame(el._raf);
+    if (playing || reduce || from === to) { el.textContent = pre + to; return; }
+    const t0 = performance.now(), d = 280;
+    const f = now => { const k = Math.min(1, (now - t0) / d), e = 1 - Math.pow(1 - k, 3);
+      el.textContent = pre + Math.round(from + (to - from) * e); if (k < 1) el._raf = requestAnimationFrame(f); };
+    el._raf = requestAnimationFrame(f);
+  }
+  let lastBr = null;
+  function smoothBearing(b) {
+    if (lastBr === null) return (lastBr = b);
+    let d = ((b - lastBr + 540) % 360) - 180; lastBr += d * 0.08; return lastBr;
+  }
+
+  // ---------------- full-ride animation: the route draws itself as the rider moves
+  let playing = false, raf = 0, startAt = 0, startIdx = 0, lastReveal = 0;
+  $("play").onclick = () => playing ? stop() : play();
+  // Playback clock: real ride time per point, but stops/breaks fast-forward (each stop counts at most 2 s).
+  // Playback length grows with riding time, ~6 s × √minutes: 10 min → 19 s, 1 h → 46 s, 5 h → 1:44 (12 s … 2 min).
+  const PC = new Float64Array(N);
+  for (let k = 1; k < N; k++) {
+    const dt = P[k][7] > 1e11 && P[k - 1][7] > 1e11 ? Math.max(0, P[k][7] - P[k - 1][7]) : 4000;
+    const stopped = P[k][3] <= 3 && P[k - 1][3] <= 3;
+    PC[k] = PC[k - 1] + (stopped || dt > 60000 ? Math.min(dt, 2000) : dt);
+  }
+  const PLAY = (() => {
+    const rideMin = (PC[N - 1] || 1) / 60000;
+    const durMs = Math.min(120000, Math.max(12000, 6000 * Math.sqrt(rideMin)));
+    return { durMs, speed: (PC[N - 1] || 1) / durMs };
+  })();
+  function play() {
+    if (N < 2) return;
+    playing = true; $("play").classList.add("on"); $("play").setAttribute("aria-label", "Pause"); lastBr = null;
+    startIdx = cur >= N - 1 ? 0 : cur; startAt = performance.now();
+    let i = startIdx;
+    const step = now => {
+      // Follow the ride's own clock, sped up by a factor that grows with ride length (see playClock).
+      const target = PC[startIdx] + (now - startAt) * PLAY.speed;
+      while (i < N - 1 && PC[i + 1] <= target) i++;
+      // Re-filtering the map is heavy; 4 updates a second is smooth enough for the trail.
+      if (now - lastReveal > 250 || i >= N - 1) { revealUpTo = i; applyReveal(); lastReveal = now; }
+      select(i, true);
+      if (i < N - 1 && playing) raf = requestAnimationFrame(step); else stop(true);
+    };
+    raf = requestAnimationFrame(step);
+  }
+  function stop(finished) {
+    if (!playing) return;
+    playing = false; cancelAnimationFrame(raf); $("play").classList.remove("on"); $("play").setAttribute("aria-label", "Play ride");
+    revealUpTo = Infinity; applyReveal(); select(cur, false);
+    if (finished) fitAll();
+  }
+  const fitAll = () => N && map.fitBounds(bounds, { padding: PAD(), pitch: 55, bearing: 0, duration: 1200 });
+
+  // ---------------- base / metric / 3D toggles
+  function setMetric(m) {
+    metric = m;
+    if (map.getLayer("route")) {
+      map.setPaintProperty("route", "line-color", colorExpr(m));
+    }
+  }
+  // Segmented toggles: a highlight slides (with a little overshoot) to the chosen option.
+  function placeThumb(seg, animate) {
+    let t = seg.querySelector(".thumb");
+    if (!t) { t = document.createElement("div"); t.className = "thumb"; seg.prepend(t); }
+    const on = seg.querySelector("button.on");
+    if (!animate) t.style.transition = "none";
+    t.style.width = on.offsetWidth + "px"; t.style.transform = `translateX(${on.offsetLeft}px)`;
+    if (!animate) { t.offsetWidth; t.style.transition = ""; }
+  }
+  document.querySelectorAll(".seg").forEach(seg => {
+    placeThumb(seg, false);
+    seg.addEventListener("click", e => { if (e.target.closest("button")) requestAnimationFrame(() => placeThumb(seg, true)); });
+  });
+  addEventListener("resize", () => document.querySelectorAll(".seg").forEach(s => placeThumb(s, false)));
+  document.fonts && document.fonts.ready.then(() => document.querySelectorAll(".seg").forEach(s => placeThumb(s, false)));
+  document.querySelectorAll("#metric button").forEach(b => b.onclick = () => {
+    document.querySelectorAll("#metric button").forEach(x => x.classList.toggle("on", x === b)); setMetric(b.dataset.m); });
+  document.querySelectorAll("#base button").forEach(b => b.onclick = () => {
+    if (b.dataset.b === base) return;
+    document.querySelectorAll("#base button").forEach(x => x.classList.toggle("on", x === b)); base = b.dataset.b; map.setStyle(style(base)); $("creditText").textContent = CREDITS[base]; if (credits.classList.contains("open")) setCredits(true); });
+
+  // ---------------- whole-trip stats
+  const km = S.km || 0, fuel = S.fuelL || 0, movingH = (S.movingS || 0) / 3600;
+  const mins = S.end && S.start ? (S.end - S.start) / 60000 : 0;
+  [["Distance", km.toFixed(1) + " km"], ["Time", mins >= 60 ? `${Math.floor(mins / 60)}h ${Math.round(mins % 60)}m` : Math.round(mins) + " min"],
+   ["Avg moving", movingH > 0 ? (km / movingH).toFixed(0) + " km/h" : "–"], ["Top speed", Math.round(S.maxKmh || 0) + " km/h"],
+   ["Mileage", S.kmpl ? S.kmpl.toFixed(1) + " km/l" : "–"], ["Fuel", fuel.toFixed(2) + " L" + (D.fuelPrice ? ` · ₹${Math.round(fuel * D.fuelPrice)}` : "")],
+   ["Max RPM", S.maxRpm || "–"], ["Climb", Math.round(S.climbM || 0) + " m"], ["Fuel gauge", S.gaugeL ? S.gaugeL.toFixed(1) + " L" : "–"]]
+    .forEach(([k, v]) => { const d = document.createElement("div"); d.className = "tile";
+      const b = document.createElement("b"); b.textContent = v; const s = document.createElement("span"); s.textContent = k; d.append(b, s); $("stats").append(d); });
+  setMetric("s");
+  select(0, false);
+
+  // ---------------- share card: preview sheet + canvas renderer (no map tiles, no coordinates)
+  const shareov = $("shareov"), cardCv = $("cardCv");
+  let cardStyle = "dark", cardFmt = "post", cardMap = "map", cardReady = Promise.resolve(), drawTok = 0;
+  const tileImg = new Map();   // url → Image (loaded) | null (failed)
+  const loadTile = url => new Promise(res => {
+    const im = new Image(); im.crossOrigin = "anonymous";
+    const t = setTimeout(() => { tileImg.set(url, null); res(); }, 8000);
+    im.onload = () => { clearTimeout(t); tileImg.set(url, im); res(); };
+    im.onerror = () => { clearTimeout(t); tileImg.set(url, null); res(); };
+    im.src = url;
+  });
+  function openShare() {
+    stop(); drawCard();
+    shareov.classList.remove("closing"); shareov.classList.add("open"); shareov.setAttribute("aria-hidden", "false");
+    ["cStyle", "cFmt", "cMap"].forEach(id => placeThumb($(id), false));
+    try { window.Android.sheet(true); } catch (e) {}
+  }
+  window.closeShare = () => {
+    if (!shareov.classList.contains("open")) return false;
+    shareov.classList.add("closing"); shareov.classList.remove("open"); shareov.setAttribute("aria-hidden", "true");
+    try { window.Android.sheet(false); } catch (e) {}
+    return true;
+  };
+  $("share").onclick = openShare;
+  $("shareClose").onclick = closeShare; $("shareDim").onclick = closeShare;
+  const pickSeg = (id, fn) => $(id).querySelectorAll("button").forEach(b => b.onclick = () => {
+    if (b.classList.contains("on")) return;
+    $(id).querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+    cardCv.classList.add("swap");
+    setTimeout(() => { fn(b.dataset.v); drawCard(); cardCv.classList.remove("swap"); }, 170);
+  });
+  pickSeg("cStyle", v => cardStyle = v); pickSeg("cFmt", v => cardFmt = v); pickSeg("cMap", v => cardMap = v);
+
+  const cardB64 = () => cardCv.toDataURL("image/png").split(",")[1];
+  const flash = (btn, txt) => { const t = btn.textContent; btn.textContent = txt; setTimeout(() => btn.textContent = t, 1600); };
+  $("cShare").onclick = async () => {
+    await cardReady;
+    try { window.Android.shareImage(cardB64()); }
+    catch (e) { const a = document.createElement("a"); a.href = cardCv.toDataURL("image/png"); a.download = "ride.png"; a.click(); }
+  };
+  $("cSave").onclick = async () => {
+    await cardReady;
+    let ok = false;
+    try { ok = window.Android.saveImage(cardB64()); }
+    catch (e) { const a = document.createElement("a"); a.href = cardCv.toDataURL("image/png"); a.download = "ride.png"; a.click(); ok = true; }
+    flash($("cSave"), ok ? "Saved ✓" : "Couldn't save");
+  };
+
+  const hexRgb = h => { h = h.replace("#", ""); if (h.length === 3) h = h.split("").map(c => c + c).join(""); const n = parseInt(h, 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  const mixC = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
+  function speedRgb(v) {
+    const st = SCALES.s.stops.map(([x, c]) => [x, hexRgb(c)]);
+    if (v <= st[0][0]) return st[0][1];
+    for (let i = 1; i < st.length; i++) if (v <= st[i][0]) return mixC(st[i - 1][1], st[i][1], (v - st[i - 1][0]) / (st[i][0] - st[i - 1][0]));
+    return st[st.length - 1][1];
+  }
+
+  function drawCard() {
+    const tok = ++drawTok;
+    const W = 1080, H = cardFmt === "story" ? 1920 : 1350, story = H > 1500;
+    cardCv.width = W; cardCv.height = H;
+    const g = cardCv.getContext("2d"), A = hexRgb(ACC);
+    const T = {
+      dark: { bg: ["#16171b", "#0a0a0c"], fg: "#f4f4f6", mu: "rgba(244,244,246,.55)", line: "rgba(255,255,255,.10)", hl: ACC, glow: .22, case: "rgba(0,0,0,.55)" },
+      light: { bg: ["#fbfbfc", "#ececf0"], fg: "#141518", mu: "rgba(20,21,24,.55)", line: "rgba(0,0,0,.08)", hl: ACC, glow: .16, case: "rgba(255,255,255,.95)" },
+      accent: { bg: [rgba(mixC(A, [255, 255, 255], .08), 1), rgba(mixC(A, [0, 0, 0], .55), 1)], fg: "#ffffff", mu: "rgba(255,255,255,.72)", line: "rgba(255,255,255,.22)", hl: "#ffffff", glow: 0, case: "rgba(0,0,0,.35)" },
+    }[cardStyle];
+    const F = (w, px) => `${w} ${px}px system-ui, -apple-system, Roboto, "Segoe UI", sans-serif`;
+    const text = (t, x, y, font, color, align = "left", ls = 0) => { g.font = font; g.fillStyle = color; g.textAlign = align; g.letterSpacing = ls + "px"; g.fillText(t, x, y); g.letterSpacing = "0px"; };
+
+    // background + soft accent glow
+    let gr = g.createLinearGradient(0, 0, W * .3, H); gr.addColorStop(0, T.bg[0]); gr.addColorStop(1, T.bg[1]);
+    g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    if (T.glow) { const rg = g.createRadialGradient(W * .85, H * .12, 0, W * .85, H * .12, W * .9); rg.addColorStop(0, rgba(A, T.glow)); rg.addColorStop(1, rgba(A, 0)); g.fillStyle = rg; g.fillRect(0, 0, W, H); }
+
+    const pad = 84, start = S.start || (P[0] && P[0][7]) || Date.now(), d = new Date(start), hr = d.getHours();
+    const title = hr >= 5 && hr < 12 ? "Morning ride" : hr < 17 && hr >= 12 ? "Afternoon ride" : hr < 21 && hr >= 17 ? "Evening ride" : "Night ride";
+    const dateStr = d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" }).toUpperCase()
+      + "  ·  " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+    const top = story ? 220 : 150;
+    text(dateStr, pad, top, F(600, 28), T.mu, "left", 3);
+    text(title, pad, top + 92, F(800, 80), T.fg, "left", -1.5);
+
+    // route (first/last 300 m trimmed so home isn't revealed), coloured by speed; web-mercator so it lines up with map tiles
+    const totalKm = S.km || (P[N - 1] && P[N - 1][8]) || 0;
+    let R = totalKm > 1.2 ? P.filter(p => p[8] >= .3 && p[8] <= totalKm - .3) : P.slice();
+    if (R.length > 1500) { const k = R.length / 1500; R = Array.from({ length: 1500 }, (_, i) => R[Math.floor(i * k)]); }
+    const box = story ? { x: pad, y: top + 160, w: W - 2 * pad, h: 700 } : { x: pad, y: top + 160, w: W - 2 * pad, h: 540 };
+    const mX = lon => (lon + 180) / 360, mY = lat => (1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2;
+    if (R.length > 1) {
+      const xs = R.map(p => mX(p[0])), ys = R.map(p => mY(p[1]));
+      const mnX = Math.min(...xs), mxX = Math.max(...xs), mnY = Math.min(...ys), mxY = Math.max(...ys);
+      const sc = Math.min(box.w / Math.max(1e-9, mxX - mnX), box.h / Math.max(1e-9, mxY - mnY), 256 * 2 ** 17);
+      const ox = box.x + (box.w - (mxX - mnX) * sc) / 2, oy = box.y + (box.h - (mxY - mnY) * sc) / 2;
+      const X = i => ox + (xs[i] - mnX) * sc, Y = i => oy + (ys[i] - mnY) * sc;
+
+      // map tiles behind the route, faded into the card background
+      if (cardMap !== "off") {
+        const mapH = box.y + box.h + 120, sat = cardMap === "sat";
+        const z = Math.max(2, Math.min(sat ? 17 : 16, Math.round(Math.log2(sc / 256))));
+        const n = 2 ** z, ts = sc / n;
+        const wx = px => mnX + (px - ox) / sc, wy = py => mnY + (py - oy) / sc;
+        const tx0 = Math.floor(wx(0) * n), tx1 = Math.floor(wx(W) * n), ty0 = Math.max(0, Math.floor(wy(0) * n)), ty1 = Math.min(n - 1, Math.floor(wy(mapH) * n));
+        // Esri, no key: satellite, or the label-free dark/light grey canvas (no place names on the card)
+        const layer = sat ? "World_Imagery" : cardStyle === "light" ? "Canvas/World_Light_Gray_Base" : "Canvas/World_Dark_Gray_Base";
+        const url = (x, y) => `https://server.arcgisonline.com/ArcGIS/rest/services/${layer}/MapServer/tile/${z}/${y}/${x}`;
+        const tiles = [];
+        for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) tiles.push([tx, ty, url(((tx % n) + n) % n, ty)]);
+        const missing = tiles.filter(t => !tileImg.has(t[2]));
+        if (missing.length) {
+          cardReady = Promise.all(missing.map(t => loadTile(t[2]))).then(() => { if (tok === drawTok) drawCard(); });
+        }
+        const mc = document.createElement("canvas"); mc.width = W; mc.height = mapH;
+        const m = mc.getContext("2d");
+        tiles.forEach(([tx, ty, u]) => { const im = tileImg.get(u); if (im) m.drawImage(im, ox + (tx / n - mnX) * sc - .5, oy + (ty / n - mnY) * sc - .5, ts + 1, ts + 1); });
+        if (sat) { m.fillStyle = cardStyle === "light" ? "rgba(255,255,255,.12)" : "rgba(0,0,0,.28)"; m.fillRect(0, 0, W, mapH); }
+        // fade: soft under the title, solid around the route, gone before the stats
+        m.globalCompositeOperation = "destination-in";
+        const fade = m.createLinearGradient(0, 0, 0, mapH);
+        fade.addColorStop(0, "rgba(0,0,0,.35)"); fade.addColorStop((top + 120) / mapH, "rgba(0,0,0,1)");
+        fade.addColorStop((box.y + box.h - 40) / mapH, "rgba(0,0,0,1)"); fade.addColorStop(1, "rgba(0,0,0,0)");
+        m.fillStyle = fade; m.fillRect(0, 0, W, mapH);
+        g.drawImage(mc, 0, 0);
+        // keep the title readable over busy imagery
+        const sh = g.createLinearGradient(0, 0, 0, top + 140);
+        const shade = cardStyle === "light" ? "255,255,255" : "0,0,0";
+        sh.addColorStop(0, `rgba(${shade},.55)`); sh.addColorStop(1, `rgba(${shade},0)`);
+        g.fillStyle = sh; g.fillRect(0, 0, W, top + 140);
+        text(dateStr, pad, top, F(600, 28), T.mu, "left", 3);
+        text(title, pad, top + 92, F(800, 80), T.fg, "left", -1.5);
+        cardAttrib = sat ? "Imagery © Esri" : "Map © Esri, HERE, Garmin, © OpenStreetMap contributors";
+      } else cardAttrib = "";
+
+      g.lineCap = g.lineJoin = "round";
+      g.beginPath(); g.moveTo(X(0), Y(0)); for (let i = 1; i < R.length; i++) g.lineTo(X(i), Y(i));
+      g.strokeStyle = T.case; g.lineWidth = 26; g.stroke();
+      if (cardStyle !== "light") { g.save(); g.filter = "blur(14px)"; g.globalAlpha = .55;
+        for (let i = 1; i < R.length; i++) { g.beginPath(); g.moveTo(X(i - 1), Y(i - 1)); g.lineTo(X(i), Y(i)); g.strokeStyle = rgba(speedRgb(R[i][3]), 1); g.lineWidth = 18; g.stroke(); }
+        g.restore(); }
+      for (let i = 1; i < R.length; i++) { g.beginPath(); g.moveTo(X(i - 1), Y(i - 1)); g.lineTo(X(i), Y(i)); g.strokeStyle = rgba(speedRgb(R[i][3]), 1); g.lineWidth = 13; g.stroke(); }
+      const dot = (i, fill) => { g.beginPath(); g.arc(X(i), Y(i), 17, 0, 7); g.fillStyle = "#fff"; g.fill(); g.beginPath(); g.arc(X(i), Y(i), 10, 0, 7); g.fillStyle = fill; g.fill(); };
+      dot(0, "#22c55e"); dot(R.length - 1, "#ef4444");
+    }
+
+    // hero distance
+    const movS = S.movingS || 0, mins = Math.round(movS / 60);
+    const hero = box.y + box.h + (story ? 170 : 160);
+    g.font = F(800, 150); const kmTxt = totalKm.toFixed(1), kmW = (g.letterSpacing = "-4px", g.measureText(kmTxt).width);
+    text(kmTxt, pad, hero, F(800, 150), T.hl, "left", -4);
+    text("km", pad + kmW + 14, hero, F(600, 52), T.mu);
+
+    // stats row(s)
+    const fmtDur = m => m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m} min`;
+    const avg = movS > 0 ? Math.round(totalKm / (movS / 3600)) : 0;
+    const row1 = [["Riding time", fmtDur(mins)], ["Avg speed", avg ? avg + " km/h" : "–"], ["Top speed", Math.round(S.maxKmh || 0) + " km/h"], ["Mileage", S.kmpl > 0 ? Math.round(S.kmpl) + " km/l" : "–"]];
+    const row2 = [["Fuel", S.fuelL ? (D.fuelPrice ? "₹" + Math.round(S.fuelL * D.fuelPrice) : S.fuelL.toFixed(2) + " L") : "–"], ["Climb", Math.round(S.climbM || 0) + " m"], ["Max RPM", S.maxRpm ? Math.round(S.maxRpm) + "" : "–"], ["Breaks", String(S.breaks || 0)]];
+    const colW = (W - 2 * pad) / 4;
+    g.fillStyle = T.line; g.fillRect(pad, hero + 50, W - 2 * pad, 2);
+    const drawRow = (row, y) => row.forEach(([k, v], i) => { const x = pad + i * colW; text(v, x, y, F(700, 44), T.fg, "left", -.5); text(k.toUpperCase(), x, y + 44, F(600, 22), T.mu, "left", 2); });
+    drawRow(row1, hero + 130);
+    if (story) {
+      drawRow(row2, hero + 260);
+      // speed profile
+      const sy = hero + 385, sh = 130, sx = pad, sw = W - 2 * pad, mx = Math.max(60, ...P.map(p => p[3]));
+      const step = Math.max(1, Math.floor(N / 400));
+      g.beginPath(); g.moveTo(sx, sy + sh);
+      for (let i = 0; i < N; i += step) g.lineTo(sx + i / (N - 1) * sw, sy + sh - P[i][3] / mx * sh);
+      g.lineTo(sx + sw, sy + sh); g.closePath();
+      const ag = g.createLinearGradient(0, sy, 0, sy + sh); ag.addColorStop(0, cardStyle === "accent" ? "rgba(255,255,255,.35)" : rgba(A, .35)); ag.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = ag; g.fill();
+      g.beginPath(); for (let i = 0; i < N; i += step) { const x = sx + i / (N - 1) * sw, y = sy + sh - P[i][3] / mx * sh; i ? g.lineTo(x, y) : g.moveTo(x, y); }
+      g.strokeStyle = T.hl; g.lineWidth = 4; g.stroke();
+      text("SPEED", sx, sy - 16, F(600, 22), T.mu, "left", 2);
+    }
+
+    // footer
+    const fy = H - (story ? 80 : 64);
+    g.fillStyle = T.line; g.fillRect(pad, fy - 46, W - 2 * pad, 2);
+    text("RONIN DASH", pad, fy, F(800, 26), T.fg, "left", 5);
+    const lg = [["slow", "#22c55e"], ["", "#3b82f6"], ["fast", "#ef4444"]];
+    let lx = W - pad; g.font = F(600, 22);
+    text("fast", lx, fy, F(600, 22), T.mu, "right", 1); lx -= g.measureText("fast").width + 18;
+    ["#ef4444", "#3b82f6", "#22c55e"].forEach(c => { g.beginPath(); g.arc(lx - 9, fy - 8, 9, 0, 7); g.fillStyle = c; g.fill(); lx -= 26; });
+    text("slow", lx - 4, fy, F(600, 22), T.mu, "right", 1);
+    if (cardAttrib) text(cardAttrib, W / 2, H - 20, F(500, 17), T.mu, "center", .5);
+  }
+  let cardAttrib = "";
+  try { if (TH && TH.share) setTimeout(openShare, 700); } catch (e) {}
+
+  // ---------------- demo ride (only when opened outside the app)
+  function demo() {
+    const mins = +new URLSearchParams(location.search).get("demo") || 40, stepMs = mins * 60000 / 600;
+    const pts = [], c = [77.5946, 12.9716], t0 = Date.now() - mins * 60000; let fuel = 0, km = 0, prev = null;
+    for (let i = 0; i < 600; i++) {
+      const a = i / 600 * Math.PI * 2, s = 25 + 75 * Math.abs(Math.sin(a * 2)), gear = s < 20 ? 2 : s < 35 ? 3 : s < 55 ? 4 : 5;
+      const r = Math.round(s * (gear === 5 ? 55 : gear === 4 ? 70 : 95) + 400), kmpl = s >= 60 ? 44 - (s - 60) * .2 : 44 - (60 - s) * .1;
+      const lon = c[0] + Math.cos(a) * .05, lat = c[1] + Math.sin(a) * .035;
+      if (prev) { const d = Math.hypot((lon - prev[0]) * 109000, (lat - prev[1]) * 110540) / 1000; km += d; fuel += d / kmpl * Math.sqrt(r / s / 55); }
+      prev = [lon, lat];
+      pts.push([lon, lat, 900 + 30 * Math.sin(a * 3), s, r, gear, kmpl, t0 + i * stepMs, km, fuel]);
+    }
+    return { points: pts, summary: { km, start: t0, end: t0 + mins * 60000, movingS: mins * 55, maxKmh: 100, maxRpm: 6100, fuelL: fuel, kmpl: km / fuel, climbM: 84 }, fuelPrice: 103 };
+  }
+})();
+</script>
+</body>
+</html>

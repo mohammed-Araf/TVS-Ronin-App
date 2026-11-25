@@ -1,0 +1,1699 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ronin Dash mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* Browser mock of the whole app. Mirrors MainActivity.kt (RoninTheme), RideScreen, TripsScreen, TestScreen, SettingsScreen,
+     CrashActivity. Fixes are collected in the side panel and applied to the real Kotlin app at the end. */
+  :root { --page: #d9dadf; }
+  .phone {
+    --primary: #E8930C; --on-primary: #fff;
+    --bg: #F6F6F7; --c: #FFFFFF; --ch: #F0F0F2; --chh: #E8E8EB;
+    --on: #16171A; --onv: #6B6D74; --outline: #DCDDE1; --outv: #E8E8EB;
+    --sec-c: #E8DEF8; --on-sec-c: #1D192B; --surf-var: #E7E0EC;   /* Material defaults the app doesn't override */
+    --error: #BA1A1A;
+  }
+  .phone.dark {
+    --bg: #0F1012; --c: #18191C; --ch: #222327; --chh: #2A2B30;
+    --on: #EDEDEF; --onv: #9A9BA1; --outline: #2E3035; --outv: #26272B;
+    --sec-c: #4A4458; --on-sec-c: #E8DEF8; --surf-var: #49454F; --error: #FFB4AB;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--page); font-family: Roboto, system-ui, sans-serif; color: #222; }
+  button { font-family: inherit; cursor: pointer; }
+  .stage { min-height: 100vh; display: flex; gap: 28px; justify-content: center; align-items: flex-start; padding: 24px 16px; flex-wrap: wrap; }
+
+  /* phone */
+  .phone { width: 390px; height: 844px; max-width: 100%; border-radius: 44px; background: var(--bg); color: var(--on); position: relative; overflow: hidden; flex: none;
+    box-shadow: 0 0 0 10px #111, 0 20px 60px rgba(0,0,0,.35); display: flex; flex-direction: column; transition: background-color .3s; }
+  .status { height: 44px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 6px 28px 0; font-size: 14px; font-weight: 500; position: relative; z-index: 30; }
+  .status .ic { display: flex; gap: 6px; align-items: center; } .status svg { width: 16px; height: 16px; fill: currentColor; }
+  .screen { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; scrollbar-width: none; }
+  .screen::-webkit-scrollbar { display: none; }
+  .content { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .tabpane { animation: tabIn .26s ease both; } .tabpane.left { animation-name: tabInL; }
+  @keyframes tabIn { from { opacity: 0; transform: translateX(12%); } to { opacity: 1; transform: none; } }
+  @keyframes tabInL { from { opacity: 0; transform: translateX(-12%); } to { opacity: 1; transform: none; } }
+
+  /* M3 type */
+  .headlineMedium { font-size: 28px; line-height: 36px; font-weight: 700; }
+  .headlineSmall { font-size: 24px; line-height: 32px; font-weight: 600; }
+  .titleLarge { font-size: 22px; line-height: 28px; font-weight: 600; }
+  .titleMedium { font-size: 16px; line-height: 24px; font-weight: 500; }
+  .labelLarge { font-size: 14px; line-height: 20px; font-weight: 500; letter-spacing: .1px; }
+  .labelMedium { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: .5px; }
+  .bodyLarge { font-size: 16px; line-height: 24px; }
+  .bodyMedium { font-size: 14px; line-height: 20px; letter-spacing: .25px; }
+  .bodySmall { font-size: 12px; line-height: 16px; letter-spacing: .4px; }
+  .muted { color: var(--onv); } .prim { color: var(--primary); } .err { color: var(--error); }
+
+  /* M3 buttons */
+  .btn { border: 0; border-radius: 20px; height: 40px; padding: 0 24px; background: var(--primary); color: var(--on-primary); font: 500 14px Roboto, system-ui, sans-serif; letter-spacing: .1px;
+    transition: transform .15s, filter .15s; white-space: nowrap; }
+  .btn:active { transform: scale(.96); filter: brightness(.92); }
+  .btn.outlined { background: none; border: 1px solid var(--outline); color: var(--primary); }
+  .btn.text { background: none; color: var(--primary); padding: 0 12px; }
+  .btn.tonal { background: var(--sec-c); color: var(--on-sec-c); }
+  .btn.big { height: 52px; border-radius: 26px; }
+  .btn[disabled] { opacity: .38; pointer-events: none; }
+
+  /* top row / conn */
+  .toprow { display: flex; align-items: center; }
+  .conn { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .conn .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; transition: background-color .4s; }
+  .conn .dot.busy { animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+  .conn .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sos { color: #FF7A6E; background: rgba(255,122,110,.15); font-weight: 700; font-size: 14px; border-radius: 999px; padding: 10px 16px; user-select: none; position: relative; overflow: hidden; cursor: pointer; }
+  .sos .fill { position: absolute; inset: 0; background: rgba(255,122,110,.3); transform: scaleX(0); transform-origin: left; }
+  .sos.holding .fill { transition: transform .5s linear; transform: scaleX(1); }
+
+  /* panel */
+  .panel { background: var(--c); border: 1px solid var(--outv); border-radius: 16px; padding: 16px; transition: background-color .3s, border-color .3s; }
+  .row { display: flex; } .row > .stat { flex: 1; min-width: 0; }
+  .gap10 { height: 10px; } .gap12 { height: 12px; }
+  .stat .v { white-space: nowrap; }
+
+  /* speed + gear */
+  .speedrow { display: flex; align-items: center; } .speedrow .l { flex: 1; }
+  .speed { font-size: 84px; line-height: 84px; font-weight: 600; display: flex; height: 84px; transition: color .3s; }
+  .gear { width: 92px; height: 92px; border-radius: 18px; background: var(--ch); display: grid; place-items: center; position: relative; overflow: hidden; }
+  .gear span { position: absolute; font-size: 56px; font-weight: 700; color: var(--primary); }
+  .dg { position: relative; overflow: hidden; display: inline-block; height: 1em; line-height: 1em; }
+  .dg span { display: block; } .dg .old { position: absolute; left: 0; top: 0; }
+  .up .new { animation: inUp .3s ease both; } .up .old { animation: outUp .3s ease both; }
+  .down .new { animation: inDown .3s ease both; } .down .old { animation: outDown .3s ease both; }
+  @keyframes inUp { from { transform: translateY(100%); opacity: 0; } } @keyframes outUp { to { transform: translateY(-100%); opacity: 0; } }
+  @keyframes inDown { from { transform: translateY(-100%); opacity: 0; } } @keyframes outDown { to { transform: translateY(100%); opacity: 0; } }
+  .label { display: flex; padding-bottom: 6px; } .label .n { flex: 1; color: var(--onv); } .label .v { font-family: "Roboto Mono", monospace; }
+  .bar { height: 8px; border-radius: 99px; background: var(--chh); overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 99px; background: var(--primary); transform-origin: left; width: 100%; transform: scaleX(0);
+    transition: transform .9s cubic-bezier(.3,.8,.3,1), background-color .9s; }
+  #rpmBar { transition: transform .7s cubic-bezier(.25,.8,.3,1), background-color .4s; } #fuelBar { transition: transform .9s ease, background-color .4s; }
+  .lamps { display: flex; flex-wrap: wrap; gap: 8px; }
+  .lamp { border-radius: 999px; padding: 8px 12px; background: var(--c); color: color-mix(in srgb, var(--onv) 60%, transparent); transition: background-color .18s, color .18s; }
+  .appear { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .3s ease, opacity .25s ease, margin .3s ease; margin-bottom: -12px; }
+  .appear.on { grid-template-rows: 1fr; opacity: 1; margin-bottom: 0; } .appear > div { overflow: hidden; }
+  .nav { display: flex; align-items: center; } .nav .arrow { width: 64px; font-size: 44px; color: var(--primary); flex: none; }
+
+  /* bottom nav */
+  .navbar { height: 80px; flex: none; display: flex; background: var(--c); padding-bottom: 4px; transition: background-color .3s; }
+  .navbar button { flex: 1; border: 0; background: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--onv); font: 500 12px Roboto, system-ui, sans-serif; letter-spacing: .5px; }
+  .navbar .pill { width: 64px; height: 32px; border-radius: 16px; display: grid; place-items: center; position: relative; }
+  .navbar .pill::before { content: ""; position: absolute; inset: 0; border-radius: 16px; background: var(--sec-c); transform: scaleX(0); opacity: 0; transition: transform .25s ease, opacity .2s; }
+  .navbar .on .pill::before { transform: scaleX(1); opacity: 1; }
+  .navbar svg { width: 24px; height: 24px; fill: currentColor; position: relative; }
+  .navbar .on { color: var(--on); } .navbar .on svg { color: var(--on-sec-c); }
+  .homebar { position: absolute; bottom: 6px; left: 50%; width: 120px; margin-left: -60px; height: 4px; border-radius: 2px; background: var(--on); opacity: .5; z-index: 40; }
+
+  /* trips */
+  .trip { animation: itemIn .35s ease both; }
+  .trip.gone { animation: itemOut .3s ease forwards; }
+  @keyframes itemIn { from { opacity: 0; transform: translateY(-10px); } }
+  @keyframes itemOut { to { opacity: 0; transform: translateX(30%); } }
+  .trip .btns { display: flex; margin: 6px -12px -8px; }
+  .trip .body { cursor: pointer; }
+
+  /* test & log */
+  .log { font-family: "Roboto Mono", monospace; font-size: 11px; line-height: 14px; white-space: pre-wrap; word-break: break-all; }
+  .log div { animation: fadeIn .3s ease; } @keyframes fadeIn { from { opacity: 0; background: color-mix(in srgb, var(--primary) 25%, transparent); } }
+  .stepwrap { position: relative; overflow: hidden; }
+  .flow { display: flex; flex-wrap: wrap; gap: 8px; }
+  .count { font-size: 40px; font-weight: 700; color: var(--primary); }
+
+  /* settings */
+  .sect .h { font-size: 12px; line-height: 16px; letter-spacing: .5px; font-weight: 600; color: var(--onv); padding: 0 0 8px 4px; }
+  .sect .box { background: var(--c); border: 1px solid var(--outv); border-radius: 16px; padding: 6px 16px; transition: background-color .3s; }
+  .item { display: flex; align-items: center; padding: 12px 0; gap: 12px; }
+  .item.click { cursor: pointer; } .item .t { flex: 1; min-width: 0; }
+  .div { height: 1px; background: var(--outv); }
+  .hint { font-size: 12px; line-height: 16px; letter-spacing: .4px; color: var(--onv); padding-bottom: 10px; }
+  .m3sw { width: 52px; height: 32px; border-radius: 16px; border: 2px solid var(--outline); background: var(--chh); position: relative; flex: none; padding: 0; transition: background-color .2s, border-color .2s; }
+  .m3sw::after { content: ""; position: absolute; top: 50%; left: 6px; width: 16px; height: 16px; margin-top: -8px; border-radius: 50%; background: var(--outline);
+    transition: left .25s cubic-bezier(.3,1.4,.5,1), width .2s, height .2s, margin .2s, background-color .2s; }
+  .m3sw.on { background: var(--primary); border-color: var(--primary); }
+  .m3sw.on::after { left: 22px; width: 24px; height: 24px; margin-top: -12px; background: var(--on-primary); }
+  .seg3 { height: 44px; border-radius: 12px; background: color-mix(in srgb, var(--surf-var) 60%, transparent); border: 1px solid var(--outv); padding: 3px; position: relative; display: flex; }
+  .seg3 .th { position: absolute; top: 3px; bottom: 3px; left: 3px; border-radius: 9px; background: var(--bg); box-shadow: 0 1px 2px rgba(0,0,0,.2);
+    transition: transform .4s cubic-bezier(.3,1.3,.5,1); }
+  .seg3 button { flex: 1; position: relative; border: 0; background: none; color: var(--onv); font: 400 14px Roboto, system-ui, sans-serif; transition: color .25s; }
+  .seg3 button.on { color: var(--on); font-weight: 600; }
+  .dots { display: flex; gap: 12px; padding-bottom: 12px; }
+  .dots button { width: 36px; height: 36px; border-radius: 50%; border: 3px solid transparent; color: #fff; font-weight: 700; padding: 0; transition: transform .2s cubic-bezier(.3,1.5,.5,1); }
+  .dots button.on { border-color: var(--on); } .dots button:active { transform: scale(.85); }
+  .radio { display: flex; align-items: center; gap: 4px; cursor: pointer; min-height: 48px; }
+  .radio i { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--onv); margin: 0 14px 0 10px; flex: none; position: relative; transition: border-color .2s; }
+  .radio i::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--primary); transform: scale(0); transition: transform .2s cubic-bezier(.3,1.5,.5,1); }
+  .radio.on i { border-color: var(--primary); } .radio.on i::after { transform: scale(1); }
+  .tf { position: relative; margin: 12px 0 0; flex: 1; min-width: 0; }
+  .tf input { width: 100%; height: 56px; border: 1px solid var(--outline); border-radius: 4px; background: none; color: var(--on); font: 16px Roboto, system-ui, sans-serif; padding: 0 16px; outline: none; transition: border-color .2s; }
+  .tf input:focus { border: 2px solid var(--primary); padding: 0 15px; }
+  .tf label { position: absolute; left: 12px; top: -8px; padding: 0 4px; font-size: 12px; color: var(--onv); background: var(--c); transition: color .2s; }
+  .tf input:focus + label { color: var(--primary); }
+  .tf .sup { font-size: 12px; color: var(--onv); padding: 4px 16px 0; }
+  .tfrow { display: flex; gap: 8px; padding-bottom: 12px; }
+  .slider { position: relative; height: 44px; margin: 0 4px; cursor: pointer; touch-action: none; }
+  .slider .tr { position: absolute; left: 0; right: 0; top: 20px; height: 4px; border-radius: 2px; background: var(--chh); }
+  .slider .fi { position: absolute; left: 0; top: 20px; height: 4px; border-radius: 2px; background: var(--primary); }
+  .slider .tk { position: absolute; top: 12px; width: 20px; height: 20px; margin-left: -10px; border-radius: 50%; background: var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .15s; }
+  .slider:active .tk { transform: scale(1.25); }
+  .expand { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .35s ease, opacity .3s; }
+  .expand.on { grid-template-rows: 1fr; opacity: 1; } .expand > div { overflow: hidden; }
+
+  /* overlays inside the phone */
+  .ov { position: absolute; inset: 0; z-index: 20; }
+  .ov.trip { top: 44px; background: var(--bg); animation: slideUp .35s cubic-bezier(.2,.8,.2,1) both; }
+  .ov.trip iframe { border: 0; width: 100%; height: 100%; display: block; }
+  .ov.closing { animation: slideDown .28s ease forwards; }
+  @keyframes slideUp { from { transform: translateY(100%); } } @keyframes slideDown { to { transform: translateY(100%); } }
+  .crash { background: #3A0B08; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 24px; text-align: center; animation: fadeIn2 .25s ease both; }
+  @keyframes fadeIn2 { from { opacity: 0; } }
+  .crash .num { font-size: 120px; line-height: 1; font-weight: 700; }
+  .crash .ok { width: 100%; height: 110px; border-radius: 20px; border: 0; background: #5CC27C; color: #000; font: 700 36px Roboto, system-ui, sans-serif; }
+  .crash .now { width: 100%; height: 64px; border-radius: 32px; border: 1px solid rgba(255,255,255,.5); background: none; color: #fff; font: 20px Roboto, system-ui, sans-serif; }
+  .toast { position: absolute; left: 16px; right: 16px; bottom: 96px; z-index: 25; background: #2b2c30; color: #fff; border-radius: 12px; padding: 12px 16px; font-size: 14px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.3); animation: toastIn .3s cubic-bezier(.2,.9,.3,1.2) both; }
+  .toast.out { animation: toastOut .25s ease forwards; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(20px); } } @keyframes toastOut { to { opacity: 0; transform: translateY(20px); } }
+
+
+  /* Night panel (OLED): pure black, only what matters at this speed, nothing flashes except emergencies. */
+  .phone.oled { --bg: #000; --c: #0A0A0B; --ch: #141416; --chh: #1C1C1F; --outv: #151517; --outline: #26272B; }
+  .phone .navbar { transition: height .45s ease, opacity .5s ease, background-color .3s; overflow: hidden; }
+  .phone .status { transition: opacity .6s; }
+  .phone.np-on .navbar { height: 0; opacity: 0; padding: 0; }
+  .phone.np-on .status { opacity: .3; }
+  .np { position: absolute; inset: 0; background: #000; color: var(--glow); user-select: none; cursor: pointer; animation: fadeIn2 .8s ease both; }
+  .np-el { opacity: 0; transition: opacity .9s ease; pointer-events: none; }
+  .np-el.on { opacity: 1; }
+  .np-center { position: absolute; left: 0; right: 0; top: 40%; transform: translateY(-50%); text-align: center; }
+  .np-speed { font-size: 140px; line-height: 1; font-weight: 300; font-variant-numeric: tabular-nums; letter-spacing: -5px; transition: color .6s; }
+  .np-unit { font-size: 13px; letter-spacing: 4px; opacity: .45; margin-top: 6px; }
+  .np-rpm { width: 190px; height: 3px; margin: 26px auto 0; background: color-mix(in srgb, var(--glow) 18%, #000); border-radius: 2px; overflow: hidden; }
+  .np-rpm i { display: block; height: 100%; width: 100%; background: var(--glow); transform-origin: left; transition: transform .7s ease; }
+  .np-gear { position: absolute; right: 26px; top: 40%; transform: translateY(-50%); font-size: 44px; font-weight: 300; text-align: center; }
+  .np-gear small { display: block; font-size: 10px; letter-spacing: 2px; opacity: .45; }
+  .np-nav { position: absolute; top: 30px; left: 0; right: 0; display: flex; justify-content: center; }
+  .np-nav b { font-size: 50px; font-weight: 300; display: block; line-height: 1.1; }
+  .np-warn { position: absolute; left: 20px; right: 20px; top: 64%; text-align: center; font-size: 14px; letter-spacing: 2px; color: var(--warnc); }
+  .np-glance { position: absolute; left: 24px; right: 24px; bottom: 70px; text-align: center; font-size: 16px; line-height: 1.8; }
+  .np-glance .dimt { opacity: .5; font-size: 14px; }
+  .np-emerg { position: absolute; left: 16px; right: 16px; top: 14px; padding: 16px; border-radius: 14px; text-align: center; font: 700 20px Roboto, system-ui, sans-serif;
+    letter-spacing: 3px; color: #fff; background: #C21F1F; animation: emerg .5s steps(1) infinite; }
+  @keyframes emerg { 50% { background: #3a0606; } }
+  .np-hint { position: absolute; bottom: 26px; left: 0; right: 0; text-align: center; font-size: 12px; letter-spacing: 1px; }
+  .reveal-bar { position: sticky; top: 0; z-index: 5; text-align: center; font-size: 12px; color: var(--onv); background: var(--bg); padding: 6px 0 2px; }
+  .ctl .evlog { font: 11px/1.45 ui-monospace, monospace; color: #444; background: #f6f6f7; border-radius: 8px; padding: 8px; max-height: 150px; overflow-y: auto; margin-top: 6px; }
+  .ctl .evlog div { border-bottom: 1px dashed #e4e4e6; padding: 2px 0; }
+  /* live mileage card */
+  .mbar { position: relative; height: 8px; border-radius: 99px; background: var(--chh); margin: 10px 0 8px; }
+  .mbar .avg { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--onv); border-radius: 1px; }
+  .mbar .cur { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--primary); border: 2px solid var(--c);
+    transition: left .9s cubic-bezier(.3,.8,.3,1); }
+  .mscale { display: flex; justify-content: space-between; font-size: 11px; color: var(--onv); }
+  .vpick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .vp { border: 1px solid var(--outline); background: none; color: var(--on); border-radius: 12px; padding: 10px 12px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 2px; font: 500 14px Roboto, system-ui, sans-serif; transition: background .25s, border-color .25s; }
+  .vp span { font-size: 12px; color: var(--onv, var(--on)); opacity: .7; font-weight: 400; }
+  .vp.on { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); }
+  .sndgrid { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 8px; }
+  .sndchip { border: 1px solid var(--outline); background: none; color: var(--on); border-radius: 8px; padding: 6px 10px 6px 8px; font: 500 13px Roboto, system-ui, sans-serif; cursor: pointer; display: flex; gap: 6px; align-items: center; }
+  .sndchip span { font-size: 9px; color: var(--primary); }
+  .sndchip.playing { animation: chipPulse .9s ease; }
+  @keyframes chipPulse { 0% { background: color-mix(in srgb, var(--primary) 22%, transparent); } 100% { background: none; } }
+  /* night panel: riding (live mileage) and stopped (everything) views */
+  .np-ride, .np-stop { position: absolute; inset: 0; }
+  .np-ride .np-center { top: 42%; }
+  .np-cmp { width: 200px; height: 2px; margin: 26px auto 0; background: color-mix(in srgb, var(--glow) 22%, #000); position: relative; border-radius: 1px; }
+  .np-cmp .avg { position: absolute; left: 50%; top: -6px; width: 1px; height: 14px; background: color-mix(in srgb, var(--glow) 55%, #000); }
+  .np-cmp .cur { position: absolute; top: -4px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--glow); transition: left .9s cubic-bezier(.3,.8,.3,1); }
+  .np-sub { margin-top: 12px; font-size: 13px; letter-spacing: 2px; opacity: .5; }
+  .np-stop { padding: 24px 24px 64px; display: flex; flex-direction: column; gap: 21px; }
+  .np svg.ic { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; opacity: .62; }
+  .np-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px 6px; }
+  .np-tile { display: flex; align-items: center; gap: 7px; font-size: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 19px; }
+  .np-tile svg.ic { width: 21px; height: 21px; }
+  .np-tile small, .np-row small { font-size: 11px; opacity: .5; margin-left: 2px; }
+  .np-row { display: flex; align-items: center; gap: 12px; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .np-two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .np-seg { flex: 1; display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; height: 11px; }
+  .np-seg i { background: color-mix(in srgb, var(--glow) 15%, #000); border-radius: 2px; transition: background-color .7s; }
+  .np-seg i.f { background: var(--glow); }
+  .np-seg.low i.f { background: var(--warnc); }
+  .np-bar { flex: 1; height: 5px; border-radius: 2px; background: color-mix(in srgb, var(--glow) 15%, #000); position: relative; min-width: 40px; }
+  .np-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: var(--glow); transition: width .9s cubic-bezier(.3,.8,.3,1); }
+  .np-bar u { position: absolute; top: -3px; bottom: -3px; width: 1px; background: color-mix(in srgb, var(--glow) 45%, #000); }
+  .np-badge { position: relative; display: inline-flex; }
+  .np-badge b { position: absolute; top: -7px; right: -9px; min-width: 15px; height: 15px; padding: 0 3px; box-sizing: border-box; border-radius: 8px;
+    background: var(--glow); color: #000; font: 700 10px/15px Roboto, system-ui, sans-serif; text-align: center; }
+  .np-badge svg.ic { opacity: .85; }
+  .np-who { opacity: .5; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .np-chips { display: flex; gap: 16px; color: var(--warnc); }
+  .np-chips svg.ic { opacity: 1; width: 26px; height: 26px; }
+  .np-gauge { width: 250px; height: 150px; display: block; margin: 0 auto; overflow: visible; }
+  .np-gauge path { fill: none; stroke-linecap: round; }
+  .np-gauge .bg { stroke: color-mix(in srgb, var(--glow) 14%, #000); stroke-width: 12; }
+  .np-gauge .fg { stroke: var(--glow); stroke-width: 12; transition: stroke-dasharray .9s cubic-bezier(.3,.8,.3,1), stroke 1.6s, opacity .9s; }
+  .np-gauge .tk { stroke: var(--glow); stroke-width: 2; opacity: .55; transform-box: view-box; transform-origin: 125px 130px; transition: transform 1.2s cubic-bezier(.3,.8,.3,1), opacity .6s; }
+  .np-gauge .claim { fill: color-mix(in srgb, var(--glow) 40%, #000); transform-box: view-box; transform-origin: 125px 130px; }
+  .np-gauge text { fill: var(--glow); font: 300 30px Roboto, system-ui, sans-serif; text-anchor: middle; opacity: .5; transition: fill 1.6s; font-variant-numeric: tabular-nums; }
+  .kcol { transition: color 1.6s; }
+  .mbar .cur { transition: left .9s cubic-bezier(.3,.8,.3,1), background-color 1.6s; }
+  .np-turn { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .np-turn svg.ic { width: 86px; height: 86px; opacity: 1; stroke-width: 1.5; }
+  .np-turn .np-bar { width: 140px; flex: none; height: 5px; }
+  .np-turn .np-bar i { transition: width .9s linear; }
+  /* day versions of the focus screens: same layout, app background, mileage colours */
+  .np.day { background: var(--bg); }
+  .np.day .np-gauge .bg, .np.day .np-bar, .np.day .np-cmpbar { stroke: color-mix(in srgb, var(--on) 12%, transparent); background: color-mix(in srgb, var(--on) 10%, transparent); }
+  .np.day .np-gauge .bg { background: none; }
+  .np-rinfo { position: absolute; left: 22px; right: 22px; bottom: 92px; display: flex; justify-content: space-between; font-size: 21px; font-variant-numeric: tabular-nums; opacity: .8; }
+  .np-rinfo span { display: flex; align-items: center; gap: 7px; } .np-rinfo b { font-weight: 400; } .np-rinfo small { font-size: 11px; opacity: .55; }
+  .np-fast { position: absolute; inset: 0; }
+  .np-fglow { position: absolute; left: -10%; right: -10%; bottom: -2px; height: 46%; opacity: .32; transition: background-color 1.6s;
+    -webkit-mask-image: radial-gradient(70% 100% at 50% 100%, #000 0%, transparent 100%); mask-image: radial-gradient(70% 100% at 50% 100%, #000 0%, transparent 100%); }
+  .np-cmpw { position: absolute; left: 0; right: 0; top: 18%; display: flex; flex-direction: column; align-items: center; gap: 26px; opacity: 0; transform: scale(.92); transition: opacity .7s, transform .7s cubic-bezier(.2,.8,.2,1); }
+  .np-cmpw.on { opacity: 1; transform: none; }
+  .np-cmp2 { width: 250px; height: 250px; overflow: visible; }
+  .np-cmp2 .ring { fill: none; stroke: color-mix(in srgb, var(--glow) 22%, transparent); stroke-width: 2; }
+  .np-cmp2 .tk { stroke: color-mix(in srgb, var(--glow) 35%, transparent); stroke-width: 2; stroke-linecap: round; } .np-cmp2 .tk.big { stroke: var(--glow); stroke-width: 3; }
+  .np-cmp2 .arr { fill: var(--glow); transform-box: view-box; transform-origin: 110px 110px; transition: transform .9s cubic-bezier(.3,.8,.3,1); }
+  .np-cmpbar { width: 240px; height: 12px; border-radius: 6px; background: color-mix(in srgb, var(--glow) 14%, #000); overflow: hidden; }
+  .np-cmpbar i { display: block; height: 100%; border-radius: 6px; background: var(--glow); transition: width .95s linear; }
+  .np-cmpw.now .np-cmpbar i { background: var(--warnc); } .np-cmpw.now .arr { fill: var(--warnc); }
+  .np-tdist, .np-cdist { display: flex; align-items: baseline; gap: 4px; font-variant-numeric: tabular-nums; transition: color .5s; }
+  .np-tdist b { font: 300 46px/1 Roboto, system-ui, sans-serif; letter-spacing: -1px; }
+  .np-cdist b { font: 300 76px/1 Roboto, system-ui, sans-serif; letter-spacing: -2px; }
+  .np-tdist small, .np-cdist small { font-size: 16px; opacity: .55; }
+  .np-turn.now, .np-cmpw.now .np-cdist { color: var(--warnc); } .np-turn.now svg.ic { stroke: var(--warnc); }
+  .np-cmpw { gap: 14px !important; }
+  .np-ask { display: flex; align-items: center; gap: 12px; border: 1.5px solid color-mix(in srgb, var(--glow) 55%, #000); border-radius: 16px; padding: 14px 18px; cursor: pointer; }
+  .np-ask svg.ic { width: 34px; height: 34px; opacity: 1; }
+  .np-ask b { font-size: 40px; font-weight: 300; line-height: 1; }
+  .np-ask span { margin-left: auto; font-size: 13px; letter-spacing: 1px; opacity: .5; }
+  .ask .askrow { display: flex; align-items: center; gap: 12px; color: var(--primary); }
+  .ask .askbtns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .ask .askbtns .btn { padding: 0 16px; }
+  .ask .chips { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .ask .chips button { border: 1px solid var(--outline); background: none; color: var(--on); border-radius: 8px; height: 34px; padding: 0 12px; font: 500 14px Roboto, system-ui, sans-serif; cursor: pointer; }
+  .ask input { width: 100%; box-sizing: border-box; height: 48px; margin-top: 12px; border: 1px solid var(--outline); border-radius: 8px; background: none; color: var(--on); font: 400 20px Roboto, system-ui, sans-serif; padding: 0 14px; }
+  .np-time { font-size: 54px; font-weight: 300; line-height: 1; letter-spacing: -1px; }
+  .np-time small { font-size: 18px; letter-spacing: 1px; opacity: .55; margin-left: 4px; }
+  .np-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 12px; }
+  .np-grid b { display: block; font-size: 22px; font-weight: 400; line-height: 1.2; }
+  .np-grid span, .np-lbl { font-size: 10px; letter-spacing: 2px; opacity: .5; }
+  .np-line { font-size: 15px; line-height: 1.5; }
+  .np-line .d { opacity: .55; }
+  .np-sep { height: 1px; background: color-mix(in srgb, var(--glow) 18%, #000); }
+  /* mock controls */
+  .ctl { width: 320px; max-width: 100%; background: #fff; color: #222; border-radius: 14px; padding: 16px; font: 13px/1.4 system-ui, sans-serif;
+    box-shadow: 0 6px 24px rgba(0,0,0,.15); position: sticky; top: 24px; max-height: calc(100vh - 48px); overflow-y: auto; }
+  .ctl h2 { margin: 0 0 2px; font-size: 15px; } .ctl p { margin: 0 0 12px; color: #777; font-size: 12px; }
+  .ctl .grp { margin-bottom: 12px; } .ctl .k { font-weight: 600; margin-bottom: 6px; font-size: 12px; color: #555; }
+  .ctl .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .ctl button { border: 1px solid #ddd; background: #f7f7f8; border-radius: 8px; padding: 6px 10px; font: 500 12px system-ui; color: #333; }
+  .ctl button.on { background: #222; color: #fff; border-color: #222; }
+  .ctl button.act { background: #fff3e0; border-color: #f0c78a; }
+  .ctl .sw { width: 26px; height: 26px; border-radius: 50%; padding: 0; border: 2px solid #fff; box-shadow: 0 0 0 1px #ccc; }
+  .ctl .sw.on { box-shadow: 0 0 0 2px #222; }
+  .ctl ol, .ctl ul { margin: 4px 0 0; padding-left: 18px; } .ctl li { margin-bottom: 4px; }
+  .ctl .fix { border-top: 1px solid #eee; padding-top: 12px; }
+  @media (max-width: 760px) { .ctl { position: static; max-height: none; } }
+  /* ---- opening: like a good instrument cluster waking up. A hairline gauge draws itself, the needle sweeps to full and back
+     (the classic ignition sweep), the name settles in. No bike drawing, no streaks, no glow. ~2.8 s, tap to skip. */
+  .intro { position: absolute; inset: 0; z-index: 60; background: #050506; color: #fff; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; --ac: var(--primary); }
+  .intro.out { animation: introOut .6s cubic-bezier(.4,0,.2,1) forwards; }
+  @keyframes introOut { to { opacity: 0; } }
+  .intro svg { width: 240px; height: 150px; overflow: visible; margin-top: -40px; }
+  .intro path { fill: none; stroke-linecap: round; }
+  .intro .trk { stroke: #ffffff24; stroke-width: 2; stroke-dasharray: 100; stroke-dashoffset: 100; animation: draw 1s .2s cubic-bezier(.6,0,.2,1) forwards; }
+  .intro .fil { stroke: var(--ac); stroke-width: 4; stroke-dasharray: 100; stroke-dashoffset: 100; animation: sweep 1.25s 1s cubic-bezier(.65,0,.35,1) forwards; }
+  .intro .tk { stroke: #ffffff59; stroke-width: 1.5; opacity: 0; animation: tkIn .5s forwards; }
+  .intro .ndl { stroke: #fff; stroke-width: 2; transform-box: view-box; transform-origin: 120px 132px; transform: rotate(-90deg); opacity: 0; animation: needle 1.25s 1s cubic-bezier(.65,0,.35,1) forwards; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes sweep { 0% { stroke-dashoffset: 100; } 50% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 100; } }
+  @keyframes needle { 0% { opacity: 1; transform: rotate(-90deg); } 50% { transform: rotate(90deg); } 100% { opacity: 1; transform: rotate(-90deg); } }
+  @keyframes tkIn { to { opacity: 1; } }
+  .intro .wm { font: 300 19px Roboto, system-ui, sans-serif; letter-spacing: .9em; margin-right: -.9em; opacity: 0; margin-top: 14px; animation: wm 1.4s .55s cubic-bezier(.2,.7,.2,1) forwards; }
+  .intro .wm span { opacity: .42; }
+  @keyframes wm { to { opacity: 1; letter-spacing: .38em; margin-right: -.38em; } }
+  .intro .stl { margin-top: 22px; font: 400 12px Roboto, system-ui, sans-serif; letter-spacing: .08em; color: #ffffff8c; display: flex; align-items: center; gap: 8px; opacity: 0; animation: tkIn .6s 2.05s forwards; }
+  .intro .stl i { width: 6px; height: 6px; border-radius: 50%; background: #1FA463; }
+  .intro .stl i.wait { background: #ffffff59; animation: pulseDot 1.2s infinite; }
+  @keyframes pulseDot { 50% { opacity: .3; } }
+  @media (prefers-reduced-motion: reduce) { .intro * { animation-duration: .01s !important; animation-delay: 0s !important; } }
+  /* ---- the phone with the app closed */
+  .home { position: absolute; inset: 0; z-index: 55; background: linear-gradient(160deg, #23324a, #0e1424 55%, #1a1020); color: #fff; padding: 96px 28px 0; box-sizing: border-box; }
+  .home .big { font: 300 72px/1 Roboto, system-ui, sans-serif; letter-spacing: -2px; text-align: center; }
+  .home .date { text-align: center; opacity: .7; font-size: 14px; margin-top: 6px; }
+  .home .apps { position: absolute; left: 28px; right: 28px; bottom: 70px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px 8px; }
+  .home .app { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11px; opacity: .92; cursor: pointer; background: none; border: 0; color: #fff; }
+  .home .app i { width: 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; background: #ffffff22; }
+  .home .app.ronin i { background: #0b0b0c; }
+  .home .app svg { width: 40px; height: 26px; }
+  .rest { position: absolute; inset: 0; z-index: 65; background: #000; color: #ffffff2e; display: grid; place-items: center; opacity: 0; pointer-events: none; transition: opacity 1.2s; }
+  .rest.on { opacity: 1; pointer-events: auto; }
+  .phone.sunmax .np.day { --glow: #000 !important; } .phone.sunmax .np.day .np-cmp2 .tk { stroke-width: 3; } .phone.sunmax .screen { filter: contrast(1.15) saturate(1.1); }
+  .heads { position: absolute; left: 10px; right: 10px; top: 10px; z-index: 70; background: #2b2c30f2; color: #fff; border-radius: 18px; padding: 12px 14px; display: flex; gap: 12px; align-items: center;
+    animation: headsIn .4s cubic-bezier(.2,.8,.2,1); box-shadow: 0 8px 24px #0006; }
+  .heads.bye { animation: headsOut .3s ease forwards; }
+  @keyframes headsIn { from { transform: translateY(-120%); } } @keyframes headsOut { to { transform: translateY(-130%); } }
+  .heads b { display: block; font-size: 13px; } .heads span { font-size: 12px; opacity: .75; }
+  /* ---- one-time setup */
+  .setup { position: absolute; inset: 0; z-index: 58; background: var(--bg); color: var(--on); padding: 64px 24px 24px; box-sizing: border-box; display: flex; flex-direction: column; overflow-y: auto; }
+  .setup h1 { font: 400 26px Roboto, system-ui, sans-serif; margin: 12px 0 8px; } .setup p { color: var(--onv); font-size: 14px; line-height: 1.45; margin: 0 0 14px; }
+  .setup .dots { display: flex; gap: 6px; } .setup .dots i { width: 22px; height: 4px; border-radius: 2px; background: var(--chh); } .setup .dots i.on { background: var(--primary); }
+  .setup .grow { flex: 1; } .setup .btn { align-self: stretch; }
+  .setup .prow { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid color-mix(in srgb, var(--outline) 40%, transparent); }
+  .setup .prow div { flex: 1; } .setup .prow b { display: block; font-weight: 500; font-size: 15px; } .setup .prow span { font-size: 12px; color: var(--onv); }
+  .setup .prow .ok { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: #1FA463; color: #fff; font-size: 14px; animation: pop .3s ease; }
+  @keyframes pop { from { transform: scale(0); } }
+  .sysdlg { position: absolute; inset: 0; z-index: 80; background: #0008; display: flex; align-items: flex-end; animation: fadeIn .2s; }
+  .sysdlg > div { background: var(--c); color: var(--on); margin: 12px; border-radius: 28px; padding: 24px; width: 100%; animation: slideUp .3s cubic-bezier(.2,.8,.2,1); }
+  .sysdlg h3 { margin: 0 0 8px; font: 400 20px Roboto, system-ui, sans-serif; } .sysdlg p { margin: 0 0 18px; font-size: 14px; color: var(--onv); }
+  .sysdlg .row { display: flex; justify-content: flex-end; gap: 8px; }
+  @keyframes fadeIn { from { opacity: 0; } }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="phone" id="phone">
+    <div class="status"><span id="clock">9:41</span><span class="ic">
+      <svg viewBox="0 0 24 24"><path d="M12 21 0 7.5C3.3 4.9 7.5 3.3 12 3.3s8.7 1.6 12 4.2z"/></svg>
+      <svg viewBox="0 0 24 24"><path d="M2 22h20V2z"/></svg>
+      <svg viewBox="0 0 24 24"><path d="M15.7 4H14V2h-4v2H8.3C7.6 4 7 4.6 7 5.3v15.3c0 .8.6 1.4 1.3 1.4h7.3c.7 0 1.3-.6 1.3-1.3V5.3C17 4.6 16.4 4 15.7 4z"/></svg>
+    </span></div>
+    <div class="screen" id="screen"></div>
+    <div class="navbar" id="navbar">
+      <button data-t="0" class="on"><span class="pill"><svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg></span>Ride</button>
+      <button data-t="1"><span class="pill"><svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg></span>Trips</button>
+      <button data-t="2"><span class="pill"><svg viewBox="0 0 24 24"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg></span>Test &amp; log</button>
+      <button data-t="3"><span class="pill"><svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.47.47 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61l-2.01-1.58zM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2z"/></svg></span>Settings</button>
+    </div>
+    <div class="homebar" title="Back" id="homebar"></div>
+  </div>
+
+  <div class="ctl" id="ctl">
+    <h2>Mock controls</h2>
+    <p>Not part of the app. Use these to put the bike and phone into different situations.</p>
+    <div class="grp"><div class="k">Phone</div><div class="opts">
+      <button class="act" id="backBtn">◁ Back</button><button data-c="theme" data-v="light" class="on">Light</button><button data-c="theme" data-v="dark">Dark</button></div></div>
+    <div class="grp"><div class="k">The app (it never has to be open: try "App closed", then Bike off → Live)</div><div class="opts">
+      <button data-c="app" data-v="open" class="on">App open</button><button data-c="app" data-v="closed">App closed</button><button class="act" id="evSetup">First-time setup</button></div></div>
+    <div class="grp"><div class="k">Where the phone is · light on the screen · phone temperature</div><div class="opts">
+      <button data-c="mount" data-v="mount" class="on">On the mount</button><button data-c="mount" data-v="pocket">In a pocket</button>
+      <button data-c="sky" data-v="open" class="on">Light sensor sees the sky</button><button data-c="sky" data-v="covered">Sensor covered / phone flat-down</button></div>
+      <div class="opts" style="margin-top:6px"><button data-c="sun" data-v="shade" class="on">Shade</button><button data-c="sun" data-v="bright">Bright day</button><button data-c="sun" data-v="direct">Sun on the screen</button>
+      <button data-c="heat" data-v="normal" class="on">Phone cool</button><button data-c="heat" data-v="hot">Phone hot</button></div></div>
+    <div class="grp"><div class="k">Time of day (for "Night panel: At night")</div><div class="opts">
+      <button data-c="time" data-v="day" class="on">Day</button><button data-c="time" data-v="night">Night</button></div></div>
+    <div class="grp"><div class="k">Accent</div><div class="opts" id="accents"></div></div>
+    <div class="grp"><div class="k">Connection</div><div class="opts">
+      <button data-c="phase" data-v="LIVE" class="on">Live</button><button data-c="phase" data-v="CONNECTING">Connecting</button><button data-c="phase" data-v="WAITING">Waiting</button><button data-c="phase" data-v="PROBLEM">Problem</button><button data-c="phase" data-v="OFF">Bike off (app asleep)</button></div></div>
+    <div class="grp"><div class="k">Bike</div><div class="opts">
+      <button data-c="ride" data-v="ride" class="on">Riding</button><button data-c="ride" data-v="idle">Idling at a stop</button><button data-c="ride" data-v="parked">Parked (side stand)</button></div></div>
+    <div class="grp"><div class="k">Riding style (throttle and gear changes; watch the mileage colour)</div><div class="opts">
+      <button data-c="style" data-v="smooth">Smooth</button><button data-c="style" data-v="normal" class="on">Normal</button><button data-c="style" data-v="aggressive">Aggressive</button></div></div>
+    <div class="grp"><div class="k">Extras</div><div class="opts">
+      <button data-x="intercom" class="on">🎧 Intercom connected</button><button data-x="hazard">⚠ Hazard</button><button data-x="nav" class="on">Google Maps nav</button><button data-x="lowfuel">Low fuel</button><button data-x="service">Service due</button><button data-x="lamps">Warning lamps</button><button data-x="gpsLost">GPS lost (tunnel)</button></div></div>
+    <div class="grp"><div class="k">Events</div><div class="opts">
+      <button class="act" id="evCrash">Simulate crash</button><button class="act" id="evSpeed">Speed past limit</button><button class="act" id="evHigh">Highway 110 km/h</button>
+      <button class="act" id="evCall">Incoming call</button><button class="act" id="evMsg">WhatsApp message</button><button class="act" id="evStand">Side stand down while moving</button><button class="act" id="evInd">Indicator left on</button><button class="act" id="evFuel">Stop at a fuel station</button><button class="act" id="evDown">Bike falls on its side</button><button class="act" id="evClMan">Rider changes bike brightness (Mode button)</button>
+      <button class="act" data-ag="low">Assistant: "bike display low"</button><button class="act" data-ag="up">Assistant: "brighter"</button><button class="act" data-ag="high">Assistant: "bike display high"</button><button class="act" data-ag="other">Assistant: "read my messages"</button></div>
+      <div class="evlog" id="evlog"><div>Events show here: what the bike display and the app would do.</div></div></div>
+    <div class="fix">
+      <div class="k">Fix list for the real app (applied all at once at the end)</div>
+      <ol id="fixList"></ol>
+      <div class="k" style="margin-top:10px">Noticed, not queued (say "add" to queue)</div>
+      <ul id="noticed"></ul>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const ACCENTS = [["Amber", "#E8930C"], ["Blue", "#3B7BF6"], ["Green", "#1FA463"], ["Red", "#E5484D"], ["Purple", "#8B5CF6"], ["Teal", "#0EA5B7"]];
+  const FIXES = [
+    "Ride tab: Hazard lamp (lights when both indicators blink together).",
+    "Night panel (OLED) in Settings: Off / At night (sunset to sunrise from GPS) / Always. Riding: pure black, shows only what the bike can't (live mileage by default; or speed, or nothing), turn arrow within 300 m, emergencies flash (side stand down while moving), nothing else. Stopped 3 s: everything fades in (time, trip distance/time/avg speed/mileage/fuel used ₹, idling L/h, fuel % + range, engine temp + battery, missed calls/messages with names, next turn, service if due, warnings). Fades out 2 s after moving. Swipe up = full dashboard for 10 s (tap does nothing, so no accidental reveals). Glow colour + brightness. Tabs hidden; other tabs true black. Visual, not text: riding = one arc gauge (top = trip average, right = better), turn = big arrow + shrinking bar; stopped = icons + bars (trip tiles, fuel segments, temperature/battery, badges for calls/messages, turn and service bars, warning icons).",
+    "Hold calls and messages until you slow down (default below 20 km/h): nothing on the phone or bike display while faster, then they come through. Calls still ring in the helmet.",
+    "Live mileage on the Ride tab: km/l now (smoothed), trip average, bar showing better/worse than average, idling L/h, trip litres and ₹.",
+    "Sounds in your helmet (sound pack, not sentences): our own 25 short sounds (tools/make_sounds.py). Indicator tick-tock in the ear on that side + a nudge if left on; turns as notes in the ear you turn to (2 notes at 300 m, 3 at the turn; roundabout goes round your head; U-turn; arrived); speed = two pings; fuel low, warning lamp, bike lost/connected; emergency alarm; ring-chirp/pop per missed call/message on slowdown. Voice: Off / Emergencies (default: only side stand while moving and crash) / More (short words, never sentences). Hear every sound in Settings.",
+    "Speed alert: nothing pops up on screen; helmet voice + the bike's own overspeed warning (+ optional phone vibrate).",
+    "Fast reconnect mid-ride (from ride2: answering a call through the intercom dropped the bike link for 6 s). If the link drops while live, reconnect directly at once instead of the slow 'wait for bike' mode; only fall back to waiting if that fails.",
+    "After any reconnect, put the display back as it was: caller name if a call is ringing or active, the current turn, missed counts and the time, not only the rider name.",
+    "Keep the I button usable during navigation (ride2: the bike sent no assistant presses at all while a turn was on its display). Show a turn on the bike only when it is close (about 1 km) and then hand the display back to the normal screen, so a long press reaches the app between turns. Needs one bike test first to see whether the bike goes back to its normal screen when turns stop.",
+    "Caller on the bike at once (we read the phone's call state, the TVS app is 4.5 s late), so a long press can answer before an intercom's auto-answer kicks in.",
+    "99 glitch guard: send the caller to the bike at most 3 times while ringing, never during an answered call, and close the caller pop-up the moment the call is answered (helmet, phone or bike), not only when it ends. Confirm the cause first with the 'repeat 150 caller' bike test.",
+    "Bad-data guard (DataGuard.kt, port of tools/data_guard.py with its replay test as JVM unit tests): every value from the bike is checked for range (RPM 0–11,000, speed 0–180, battery 6–15.8 V…), possible change since the last reading, and cross-checks (RPM vs speed per gear, RPM rise needs throttle, gear vs neutral lamp, battery drop only while starting, odometer never backwards). A jump is only believed if the next readings agree. Rejected = keep the last good value; nothing good for 3 s = show '–', never a fake number. Alerts and records act only on 2+ agreeing readings (side stand alarm, crash check, hold-calls speed, night riding/stopped switch, top speed and max RPM). Bike speed vs phone GPS: if they disagree for 5 s, trip distance and speed alerts use GPS. A field that keeps failing shows up in Test & log ('Bike data looks wrong: RPM') and in the shared log, never as a popup while riding.",
+    "Motion everywhere, nothing jumps: every number counts to its new value (~0.65 s, ease-out; speed digits roll, gear slides), text cross-fades, bars, arcs, segments and colours glide (~0.9 s). A '–' fades in/out. Switching units (m ↔ km, km/l ↔ L/h) fades instead of counting. Views that rebuild (night stopped view) keep their last values and carry on from there. Compose: animateFloatAsState / animateColorAsState / AnimatedContent on every value; respects the phone's 'remove animations' setting.",
+    "Mileage colour: live mileage (Ride tab, night gauge and its number, trip average) goes from green (≥ 46 km/l, easy riding) through yellow-green (42, TVS's claim) and orange (32, about 120 km/h) to red (≤ 28, revving hard), fading slowly between them. Night gauge is now a fixed 15–65 km/l scale: a tick shows your average, a small dot TVS's 42 km/l.",
+    "Real mileage from fuel flow, not speed: fuel (L/h) = K × RPM × engine load, load from the throttle position the bike reports (0–100 %): idle 0.15 L/h, fuel cut when the throttle is shut while rolling, richer above 70 % throttle. Calibrated so steady 60 km/h in 5th ≈ 44 km/l and 120 km/h ≈ 32 km/l. Catches a fist of throttle in top gear at 35 km/h even when the RPM barely moves. Live = distance ÷ fuel over the last few seconds. Petrol left = our own count (fills minus fuel burned), shown in litres on the fuel bar. Range = petrol left × YOUR mileage lately (distance and fuel weighted over the last ~50 km, idling included, kept across rides), so it follows how you ride: it drops within ~20 km of riding hard and climbs when you cruise. The bike's own range (DTE) is never shown or used; the bike's fuel gauge is only used to spot a fill-up. Low-fuel sound when our range drops below 40 km.",
+    "Distance from GPS, not the bike: trip distance, mileage and range use GPS (points with poor accuracy dropped, no creep while stopped). The bike's speedometer reads high; the app learns by how much from GPS on steady stretches and uses bike speed ÷ that error when GPS drops (tunnels, flyovers, basements, permission off). The odometer is the long-run check: if GPS and the corrected odometer disagree by more than 3 % over 20+ km, the odometer wins for that stretch and it shows in Test & log.",
+    "Fuel stop question, optional, self-calibrating: when GPS shows you parked at a fuel station (OpenStreetMap list downloaded once for your area + every station you've filled at before) with the engine off, or the bike's fuel gauge went up after a stop, the app shows one card: 'Filled up?' Full tank / Litres / ₹ / No (chips for 1/2/5/10 L and ₹100/200/500/1000; ₹ uses your petrol price; Full tank then optionally asks the litres on the pump). No notification: it's on the dashboard (night panel: pump + '?') for whoever looks. Nobody has to answer: ride off without answering and the bike's fuel gauge decides (how far it rose = litres added, ≥ 95 % = full tank); the card then waits quietly ('Filled up at Indian Oil, 10:42? Going by the fuel gauge: full tank') and only shows when stopped, for ~3 h. An answer always wins over the gauge guess (the guess is undone first). Calibration: an answered full tank with pump litres = full-to-full (everything poured since the last full vs what the model burned) → corrects K, weighted by litres, answers > 30 % off ignored. A full-to-full known only from the gauge nudges K a little (weight 0.15) because the gauge is rough. Partial fills add to petrol left and count toward the next full tank. Bike test 2026-11-25: the bike sends the fuel gauge as BARS (live byte 6 = 0–9 bars, 9 = full, owner confirmed), not a percent; TVS Connect reads it as 9 % and nags \"low fuel\" on a full tank. We use bars: a fill shows as bars going up, and the manual's fixed points (1 bar ≈ 3.2 L, 0 bars ≈ 2 L) also correct the fuel model. Never show a \"low fuel\" prompt from that byte as a percent.",
+    "Invisible and light: (1) Pair once as an Android companion device (CompanionDeviceManager, Android's own 'Allow Ronin Dash to access your bike?' dialog) and observe device presence. Android watches for the bike itself; when the ignition comes on it wakes our CompanionDeviceService, which starts BikeService. When the bike goes away BikeService saves the trip and stops itself: no process, 0 MB, nothing scheduled. No app open needed ever, survives reboots. Fallback for phones where presence is unreliable: a BLE scan with a PendingIntent and a hardware filter on the bike's address (also costs nothing while idle). (2) Remove the always-on service, START_STICKY, the boot start, the Start/Stop button and 'Start after phone restart'. (3) While riding Android requires a notification for the running service: put it on a MIN-importance channel (no status-bar icon, no sound, collapsed at the bottom of the shade). (4) The only notification the app posts is service due (after a ride, never while moving). The crash alert stays (it's a full-screen alarm, not a notification). (5) Memory: the service never loads Compose or any screen code; no extra libraries; target under ~10 MB of our own heap while riding, checked with 'adb shell dumpsys meminfo dev.ronindash' and shown in Test & log. (6) Battery: GPS only while moving and connected, one fix every ~5 s (distance in between from bike speed ÷ learned speedometer error), off when stopped > 60 s; no wakelocks, no polling timers when the bike is off.",
+    "Opening (only when you open the app from its icon, ~2.8 s, tap to skip, instant if the phone has animations off): like a good instrument cluster waking up. Black screen; a hairline gauge arc draws itself and its ticks fade in one by one; the needle sweeps to full and back (the ignition sweep) with one light haptic tick at the top; RONIN DASH settles in as its letter spacing tightens; then a quiet status line ('TVS22XXXXXXXX · connected' or 'Waiting for your bike'); everything fades and the dashboard rises in gently. No bike drawing, streaks or glow. The same gauge-and-needle mark is the launcher icon. Compose Canvas, no video or Lottie.",
+    "Six screens, switched by the bike, never by a button (replaces the night panel's riding/stopped rule): PARKED = stopped (speed 0) with the side stand down → everything (day: the full dashboard; night: the icon view). RIDING = moving, or stopped with the stand up (signal, kill switch) → live mileage gauge, next turn (icon + metres left, counting down), range, trip km, time. FAST = at or above 70 km/h for 3 s (adjustable 50–100), back to riding below 55 for 4 s → nothing to read: a compass pointing at the next turn with the metres left counting down under it, and the bottom of the screen glowing in the mileage colour. Each has a day version (app colours) and a night version (OLED black + glow). Switches need 2 agreeing readings and fade across. Side stand down while moving is NOT parked: the stand cuts the engine, so it's the emergency alarm (flashing STAND + sound) and the screen stays on riding/fast; once stopped with the stand down it becomes parked. Bottom tabs hidden on riding/fast; swipe up shows the full dashboard for 10 s.",
+    "Turn compass (fast screen) and turn timing (all riding screens): the next turn appears about 36 s before you reach it: up to 1 km at 100 km/h, ~300 m at 30, never under 200 m. The arrow points at where the turn is: Google Maps only gives the distance and the kind of turn, so the app estimates the turn's spot from GPS heading and that distance and corrects it with every Maps update; in the last ~120 m it swings to the exit direction (left, right, straight, roundabout) and the arrow and number turn amber. Distance is always a number in metres (rounded to 10 m above 100 m), never a draining bar: the number of digits tells you how close it is at a glance (4 = about a km, 3 = hundreds of metres, 2 = turn now), and it counts down smoothly. When Maps moves on to the next turn, the compass fades out until the next one is ~36 s away.",
+    "Gear data from the owner: Ronin has 5 gears; owner's-guide upshifts at ~16 / 24 / 35 / 48 km/h; gear top speeds 42 / 76 / 92 / 114 km/h → ≈ 214 / 118 / 98 / 79 / 65 rpm per km/h at a ~9,000 rpm limit. Use them in DataGuard's gear-vs-speed check (a gear reading at a speed above that gear's top + 5 km/h is wrong) and in the mileage model. The engine can be killed by the key, the kill switch or the side stand.",
+    "Sun and heat: the light sensor tells when the sun is straight on the screen (~40,000+ lux for 5 s). Then the screen can't be read even at full brightness, and full brightness in the sun is what overheats phones until they shut down. Default: the screen rests (black, lowest brightness, so almost no power) and comes back with a fade when the light drops for 10 s; helmet sounds, bike display, trips and crash check carry on. Settings → 'Fight direct sunlight' (off by default) = full brightness and high contrast instead. Either way the app watches the phone's thermal status (PowerManager): at 'moderate' it caps brightness, slows GPS to every 15 s and stops animations; at 'severe' the screen rests even with Fight on, so the phone doesn't shut down mid-ride. Bright (not direct) daylight: brightness up + high-contrast colours.",
+    "Battery, everywhere: nothing runs while the bike is off (no process, no alarms, no wakelocks; Android's own companion-device watch wakes us). While riding: GPS only when moving (one fix ~every 5 s, off after 60 s stopped); sensors (gyro/accelerometer/compass) only while riding with the phone on the mount, batched at ~10 Hz; screen limited to 60 Hz (preferred refresh rate) since nothing on it needs 120; no animation runs unless a value changed (no endless spinners or pulses); the screen is kept on only while the dashboard is open and the bike is on. Night: true black on OLED (dark pixels use no power), thin strokes, amber/red glow by default (cheaper than white/blue), brightness follows the light sensor down to the minimum. Phone in a pocket (proximity covered + dark): screen off. Battery used per ride shown in Test & log.",
+    "Opens itself on ignition: when the bike turns on and the phone is on the mount (proximity sensor clear, not dark, upright), the dashboard opens by itself over the lock screen (Android lets companion-device apps start their screen from the background) and does its needle sweep together with the bike's cluster sweep. In a pocket it stays closed. When the bike turns off, the dashboard it opened closes and the phone sleeps. Settings: 'Open the dashboard when the bike turns on' (on).",
+    "Phone sensors, only where they earn their battery: (1) Compass heading for the turn compass below ~15 km/h (GPS heading is noise when slow), corrected against GPS heading while riding straight because the bike's metal and wiring bend a magnetometer. (2) Lean angle (gyroscope + accelerometer, phone on the mount): zeroed automatically while riding straight; max lean left/right per trip on the parked dashboard and in the trip. (3) Bike down: lean past ~60° for 3 s right after moving, then stopped → the crash alert, a second signal next to impact detection (and fewer false alarms from a dropped phone, which doesn't stay at 60°+ while the bike's GPS speed was real). Only when the phone is on the mount. No camera: a dashcam would heat and drain the phone, and nothing else needs it.",
+    "Natural voice: the 21 fixed phrases (side stand, crash and SOS countdown, bike down, fuel low, turns, slow down, missed call…) ship as clips from Kokoro-82M (Apache-2.0 open neural voice, rendered once on the Mac by tools/make_voice.py, kept short and trimmed, Opus in res/raw: ~108 KB per voice). Settings → Whose voice: Heart / Emma / Michael / George, tap to hear. Only the chosen voice's clips are loaded (SoundPool, decoded once). Anything with a name in it (Voice: More, who called) uses the phone's best offline voice (Android TTS, QUALITY_VERY_HIGH, Indian English first, never a network voice). Turns are never spoken by default: Google Maps already speaks them, better (street names, landmarks). We add only the left/right ear tones Google doesn't have, plus the screen. Setting 'Say the turns too' (off) is for riders who mute Google's voice; then it says \"Left turn\" etc., no distance (that's on the screen). The speed alert says \"Slow down\", not the number. Sounds still come first; voice only for emergencies by default.",
+    "Bike display brightness follows the light. TESTED ON THE BIKE (2026-11-25): frame 5A F1 LL 00 00 00 00 00 00 DD MM YY 00 00 01 00 00 00 00 FF (the official app's dated form; its voice-assist form with byte 13 = 1 is ignored). LL = 2–10 = 20–100 % (0 and 11+ are ignored; 1 is accepted but the bike's menu has no 10 % and the cluster misbehaves, so never send it). Only after the session has started (our status frame 5B 4A, which we send on connect anyway). The bike reports the level back in type 0x11 byte 17, high nibble (low nibble = ride mode, 1 = Urban), so we always know the real level. Light from the phone's ambient light sensor (already on for screen auto-brightness, no extra battery). Only trusted when ALL hold: connected; phone on the mount (proximity clear); light sensor facing the sky (screen up/back within ~70° of vertical); not the pocket pattern (dark + upright + proximity near). Otherwise the bike is left alone. Lux → level: under 15 = 2 (night, 20 %), under 150 = 4 (tunnel, dusk), under 1,500 = 6 (evening), under 12,000 = 8 (daylight shade), above = 10 (sun). Brighter after 2 s steady, dimmer after 6 s; one 20-byte write per change. If byte 17 shows a level we didn't send (rider used Mode → Illumination), auto stops for the rest of that ride. Setting: Bike display follows the light (on).",
+    "Assistants: brightness only. Exactly one entry point, setBikeBrightness(level: low | high | up | down | 2–10; low = 2, high = 10), reachable four ways, all calling the same code: (1) Android AppFunctions (androidx.appfunctions, @AppFunction) so Gemini can call it directly on Android 16+; (2) static app shortcuts 'Bike display brighter' / 'Bike display dimmer' (launcher long-press, Google Assistant, routines); (3) an exported intent dev.ronindash.action.SET_BIKE_BRIGHTNESS with extra level, for Tasker, MacroDroid and other agents; (4) deep link ronindash://brightness?level=low. Nothing else is exported: no data, messages, calls, trips or settings. Input is checked (anything else → 'Ronin Dash can only make the bike display brighter or dimmer'); at most one write per 2 s; only while connected; it runs in the existing ride service, with no screen opened. An assistant request counts as the rider's choice, so auto brightness pauses for the rest of that ride (same as the Mode button). The reply is spoken by the assistant, not by us. Setting: 'Assistants can change the bike display brightness' (on). Frame confirmed on the bike.",
+    "I button: the exact rules (bike test 2026-11-25, every case worked in our app). The bike reports a press when you LET GO, and only if the hold was right. No call: hold 2–3 s and let go → assistant (shorter taps or much longer holds are ignored by the bike). Incoming call: a tap rejects; hold ~2.5 s and let go answers; much longer does nothing. So all wording says 'hold 2–3 seconds and let go': crash/bike-down cancel (screen text + re-rendered voice clips 'Hold the I button if you're okay'), Settings. The clutch is the same (held = seen, quick pull = missed), so it's only used as a held state. Bonus: byte 11 = 0x80 arrives ~11 s before the link drops when the bike switches off → save the trip and stop at once instead of waiting for the Bluetooth timeout.",
+    "First-time setup (one flow, then never again): 1) what it does, 2) find the bike: Android's companion-device dialog + the code on the bike display, 3) every permission on one screen with Allow / Allow all (nearby devices, location all the time, phone and contacts, notification access, notifications for service only, battery unrestricted, Xiaomi Autostart; SMS and display-over-apps optional), 4) done → opening animation → dashboard. Settings keeps the same list to fix anything later.",
+  ];
+  const NOTICED = [
+    "Bottom tab highlight is Material's default light purple, not your accent.",
+    "Test & log answer buttons are the same default purple (tonal buttons).",
+    "Settings theme switch background has a faint purple-grey tint (Material default).",
+  ];
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const st = { mount: "mount", sun: "shade", heat: "normal", app: "open", style: "normal", intercom: true, theme: "light", time: "day", phase: "LIVE", ride: "ride", nav: true, lowfuel: false, service: false, lamps: false, hazard: false, tab: 0, standMoving: false, sky: "open" };
+  // app settings (Prefs)
+  const P = { theme: "light", accent: 0, keepScreenOn: true, running: true, speedAlert: true, limit: 80, beep: true, clusterOverspeed: true,
+    interval: 6000, warn: 300, lastSvc: "", crashDetect: true, contacts: ["+91 90000 00000"], sosCall: false, riderName: "RONIN",
+    calls: true, sms: true, whatsapp: true, navOn: true, assist: "default", vaFeedback: true, tripRecord: true, price: 103, tank: 14, avgKmpl: 41.6, fuelCal: 1.02, fulls: 3, recKm: 50, recL: 50 / 41.6,
+    autoStart: true, fileLog: true,
+    fastKmh: 70, fightSun: false, autoOpen: true, clusterBright: true, agentBright: true, night: "night", nightGlow: "accent", nightBright: 70, nightShow: "mileage", nightTurns: true, holdAlerts: true, slowKmh: 20,
+    sndInd: true, sndSpeed: true, sndTurns: true, sndWarn: true, sndMissed: true, voice: "emergency", voiceName: "af_heart", sayTurns: false };
+  const SLIDERS = { fastKmh: [50, 100, 5, " km/h"], limit: [30, 150, 5, " km/h"], nightBright: [10, 100, 5, "%"], slowKmh: [10, 40, 5, " km/h"] };
+  const GLOWS = [["accent", "Accent"], ["red", "#FF453A"], ["amber", "#FFB020"], ["green", "#3DDC84"], ["white", "#FFFFFF"]];
+  const glowBase = () => P.nightGlow === "accent" ? ACCENTS[P.accent][1] : GLOWS.find(g => g[0] === P.nightGlow)[1];
+  const dimC = c => `color-mix(in srgb, ${c} ${P.nightBright}%, #000)`;
+  const nightActive = () => P.night === "always" || (P.night === "night" && st.time === "night");
+  let revealUntil = 0;
+  const revealing = () => Date.now() < revealUntil;
+  let held = [], released = [];
+
+  // ---------------- bike simulation (the real bike sends about one update a second)
+  const B = { clLvl: 8, clWant: 8, clS: 0, clMan: false, clWhy: "", speed: 0, target: 45, gear: 0, rpm: 1400, fuel: 62, dte: 236, odo: 5812.4, tripA: 132.6, tripB: 18.2, temp: 82, batt: 12.6,
+    top: 0, throttle: 0, high: false, neutral: true, engine: true, stand: false, clutch: false, mil: false, abs: false,
+    tripKm: 0, kmpl: 0, lph: 0, fV: 0, fF: 0, tankL: 8.7, trueL: 8.44, burnRaw: 5.2, poured: 0, fullKnown: true, gpsSpd: 0, speedoK: 1.055, ask: null, station: null, lowWarned: false, mode: "ride", parkS: 0, fastS: 0, slowS: 0, standS: 0, turnOn: false, turnFrom: 1, navCurve: 18, lean: 0, maxL: 0, maxR: 0, screen: "normal", sunS: 0, autoOpened: false, stopS: 0, missed: 2, unread: 3, live: 0, L: 0, rideS: 0, prevSpd: 0, belowS: 9, aboveS: 0, indOnS: 0, navPrev: 9999, navM: 650, navMin: 12, navDir: 0, blink: 0, blinkSide: null, overS: 0 };
+  // Ronin: 5 speeds. rpm per km/h in each gear. Gear top speeds (owner: 42 / 76 / 92 / 114 km/h) at the ~9,000 rpm limit give
+  // 214 / 118 / 98 / 79; 2nd, 4th and 5th (65, so 60 km/h ≈ 3,900 rpm) match what the ride captures measured.
+  const RATIO = [0, 214, 118, 98, 79, 65];
+  // where a rider shifts up (km/h). Smooth = the owner's guide: 16 → 2nd, 24 → 3rd, 35 → 4th, 48 → 5th. Aggressive revs it out.
+  const SHIFT = { smooth: [1, 16, 24, 35, 48], normal: [1, 20, 32, 45, 60], aggressive: [1, 34, 62, 80, 100] };
+  const gearFor = v => { const s = SHIFT[st.style]; let g = 0; for (let i = 0; i < 5; i++) if (v >= s[i]) g = i + 1; return g; };
+  // Fuel flow from what the bike reports: RPM × engine load, and load comes from the throttle the rider actually gives.
+  // In 5th at 35 km/h a full throttle barely lifts the RPM, but it still pours fuel in; the throttle term catches that.
+  // Calibrated to the Ronin: idle 0.15 L/h, 60 km/h steady in 5th ≈ 44 km/l, 120 km/h ≈ 32 km/l. Corrected per bike at each fill-up (P.fuelCal).
+  const FUEL = { K: 5.27e-4, L0: .19, TAU: 25 };
+  function fuelLph(rpm, thr, speed) {
+    if (!rpm) return 0;
+    if (thr < 2 && rpm > 1800 && speed > 10) return .02;            // throttle shut while rolling: injectors cut fuel
+    const load = FUEL.L0 + (1 - FUEL.L0) * (1 - Math.exp(-thr / FUEL.TAU));
+    const rich = thr > 70 ? 1 + .15 * (thr - 70) / 30 : 1;           // wide open: runs rich
+    return FUEL.K * rpm * load * rich * P.fuelCal;
+  }
+  // YOUR mileage lately: distance and fuel weighted over the last ~50 km you rode (older riding fades out), idling in traffic included.
+  // Ride hard for a while and it drops within ~20 km; cruise gently and it climbs. Kept across rides, so range fits how you ride.
+  const mileAvg = () => P.recKm / P.recL;
+  const ourRange = () => Math.max(0, B.tankL * mileAvg());   // never the bike's own range: it's wrong
+  // mock only: this bike really burns 7 % more than the model thinks, and its speedometer reads 6 % high. Watch the app learn both.
+  const TRUE_CAL = 1.07, SPEEDO_TRUE = 1.06;
+  const NAVWORD = ["Left turn", "Right turn", "Keep straight", "Roundabout"];
+  const NAVDIR = [["↰", "Turn left onto 100 Feet Rd"], ["↱", "Turn right onto MG Road"], ["↑", "Continue on Outer Ring Rd"], ["↻", "Roundabout, 2nd exit"]];
+  const nextService = () => { const last = parseFloat(P.lastSvc); return last >= 0 && P.lastSvc !== "" ? Math.round(last + P.interval) : Math.ceil(B.odo / P.interval) * P.interval; };
+
+  function tick() {
+    const live = st.phase === "LIVE";
+    if (st.ride === "ride") {
+      if (B.speed === 0 && B.target === 0) B.target = 35;
+      if (Math.random() < .18) B.target = [0, 25, 40, 55, 65, 80, 95][Math.floor(Math.random() * 7)];
+      if (B.forceFast) B.target = P.limit + 12;
+      const d = B.target - B.speed;
+      B.speed = Math.max(0, Math.round(B.speed + Math.sign(d) * Math.min(Math.abs(d), 4 + Math.random() * 5)));
+      // three things kill the engine: the key, the kill switch, and the side stand (stand down = engine cut, even while moving)
+      B.engine = !st.standMoving; B.stand = !!st.standMoving; if (st.standMoving) B.target = 0;
+    } else { B.speed = Math.max(0, B.speed - 9); B.target = 0; B.engine = st.ride === "idle" || B.speed > 0; B.stand = st.ride === "parked" && B.speed === 0; }
+    B.gear = B.engine ? gearFor(B.speed) : 0; B.neutral = B.gear === 0;
+    B.rpm = !B.engine ? 0 : B.gear === 0 ? 1350 + Math.round(Math.random() * 120) : Math.min(9000, Math.max(1400, Math.round(B.speed * RATIO[B.gear] - 80 + Math.random() * 160)));
+    // throttle a rider needs: enough to hold the speed (more in a lower gear), plus extra when speeding up (how much depends on style)
+    const dv = B.speed - B.prevSpd;
+    const hold = (2 + .2 * B.speed + .0022 * B.speed * B.speed) * Math.sqrt(RATIO[5] / (RATIO[B.gear] || RATIO[5]));
+    const push = { smooth: 7, normal: 22, aggressive: 55 }[st.style];
+    B.throttle = !B.engine || B.speed === 0 ? 0 : dv < -2 ? 0 : Math.min(100, Math.round(hold + (dv > 1 ? push : 0) + Math.random() * 4));
+    B.clutch = B.speed > 0 && Math.random() < .08; B.top = Math.max(B.top, B.speed);
+    const km = B.speed / 3600; B.odo += km; B.tripA += km; B.tripB += km;   // the bike's own counters (its speedo reads high)
+    // distance: GPS; when GPS drops (tunnel, flyover, basement), bike speed corrected by the speedometer error learned from GPS.
+    // Odometer (1 km steps) is the long-run check on both.
+    const gpsOk = !st.gpsLost;
+    B.gpsSpd = gpsOk && B.speed > 0 ? Math.max(0, B.speed / SPEEDO_TRUE + (Math.random() - .5) * .8) : 0;
+    if (gpsOk && B.speed > 20 && Math.abs(dv) < 3) B.speedoK += (B.speed / B.gpsSpd - B.speedoK) * .05;
+    const dist = (gpsOk ? B.gpsSpd : B.speed / B.speedoK) / 3600;
+    if (P.tripRecord && (B.speed > 3 || B.tripKm > 0)) { B.tripKm += dist; B.stopS = B.speed > 3 ? 0 : B.stopS + 1; }
+    // live mileage = distance ÷ fuel, both smoothed over a few seconds (ratio of averages, so one blip can't swing it)
+    B.prevSpd = B.speed;
+    B.lph = fuelLph(B.rpm, B.throttle, B.speed);
+    B.fV = B.fV * .6 + B.speed * .4; B.fF = B.fF * .6 + B.lph * .4;
+    B.live = B.speed > 3 && B.fF > 0 ? Math.min(99, B.fV / B.fF) : 0;
+    B.tankL = Math.max(0, B.tankL - B.lph / 3600);                        // our petrol-left estimate
+    B.burnRaw += B.lph / P.fuelCal / 3600;                                  // uncalibrated model litres since the last full tank
+    B.trueL = Math.max(0, B.trueL - B.lph / P.fuelCal * TRUE_CAL / 3600);   // mock: what's really in the tank (the bike's gauge)
+    { const dec = Math.exp(-dist / 50); P.recKm = P.recKm * dec + dist; P.recL = P.recL * dec + B.lph / 3600; }
+    if (P.tripRecord && (B.speed > 3 || B.tripKm > 0)) { B.L += B.lph / 3600; if (B.speed > 3) B.rideS++; }
+    if (B.tripKm > 0 && B.L > 0) B.kmpl = B.tripKm / B.L;
+    // stopped vs riding, with hysteresis so crawling in traffic doesn't flicker
+    if (B.speed < 5) { B.belowS++; B.aboveS = 0; } else { B.aboveS++; if (B.aboveS >= 2) B.belowS = 0; }
+    B.fuel = Math.round(B.trueL / P.tank * 100);   // the bike's own fuel gauge: only used to spot a fill-up, never for range
+    // fuel stop: parked at a fuel station (or the bike's gauge went up after a stop) → one simple question
+    if (B.station && !B.ask && B.speed === 0 && (!B.engine || B.belowS >= 30)) {
+      B.ask = { stage: "ask", gauge0: B.fuel, at: new Date(), station: B.station };
+      B.ask.pumped = Math.round((P.tank - B.trueL) * 10) / 10; B.trueL = P.tank;   // mock: the attendant fills it up
+      evlog(`Stopped at ${B.station} with the engine off → "Filled up?" card in the app (no notification; answering is optional)`); }
+    if (B.ask && !B.ask.late && B.speed > 5) {
+      const rise = B.fuel - B.ask.gauge0;
+      if (rise < 8) { evlog("Rode off without answering, fuel gauge didn't go up → nothing filled"); B.ask = null; }
+      else gaugeFill();
+      B.station = null; }
+    const rng = ourRange();
+    if (live && rng < 40 && !B.lowWarned) { B.lowWarned = true; if (P.sndWarn) cue("fuel_low", "Fuel low", false, `fuel low: about ${Math.round(rng)} km left`); else evlog(`Range ${Math.round(rng)} km`); }
+    if (rng > 55) B.lowWarned = false;
+    B.temp = B.engine ? 82 + Math.round(Math.random() * 3) : 64; B.mil = st.lamps; B.abs = st.lamps;
+    if (!B.blinkSide && st.ride === "ride" && Math.random() < .06) { B.blinkSide = Math.random() < .5 ? "left" : "right"; B.blink = 6; }
+    if (B.blinkSide && --B.blink <= 0) B.blinkSide = null;
+    B.high = st.ride === "ride" && B.speed > 70;
+    if (st.standMoving && st.ride !== "ride") st.standMoving = false;
+    if (st.nav) { B.navM -= Math.round(B.speed / 3.6); if (B.navM < 30) { B.navM = 400 + Math.round(Math.random() * 1600); B.navDir = (B.navDir + 1) % 4; B.navCurve = (Math.random() * 2 - 1) * 35; B.turnOn = false; } if (Math.random() < .03) B.navMin = Math.max(1, B.navMin - 1); }
+    // ---- screen vs sun and heat. Direct sun on the screen (light sensor ~40,000+ lux for 5 s) makes it unreadable even at full
+    // brightness, and full brightness in the sun is what overheats phones until they shut down. So by default the screen RESTS
+    // (black, lowest brightness) and comes back in the shade; helmet sounds and the bike display carry on. "Fight direct sunlight"
+    // in Settings = full brightness instead, still backing off if the phone gets hot. Phone hot (thermal status) = rest regardless.
+    { const sunHard = st.sun === "direct", hot = st.heat === "hot";
+      B.sunS = sunHard ? B.sunS + 1 : 0;
+      const want = st.mount === "pocket" ? "off" : hot ? "rest-hot" : B.sunS >= 2 && !P.fightSun ? "rest" : sunHard ? "max" : st.sun === "bright" ? "bright" : "normal";
+      if (want !== B.screen) {
+        evlog({ off: "Phone in a pocket → screen off", "rest-hot": "Phone is hot (thermal status 'moderate'+) → screen rests at lowest brightness, GPS every 15 s, no animations, until it cools",
+          rest: "Sun straight on the screen → can't be read anyway → screen rests (black, lowest brightness). Sounds keep working. Back when the light drops.",
+          max: P.fightSun ? "Sun on the screen, 'Fight direct sunlight' is on → full brightness, high contrast (backs off if the phone gets hot)" : "Sun on the screen…",
+          bright: "Bright day → brightness up, high-contrast colours", normal: "Normal light → automatic brightness" }[want]);
+        B.screen = want; applyScreen(); } }
+    // ---- bike display brightness follows the light (5A F1, levels 2–10 = 20–100 %, read back from 0x11 byte 17; never 1). Only when we can trust the light reading: connected, the phone
+    // on the mount, its light sensor open to the sky (proximity clear, screen facing up/back within ~70° of vertical, not dark-and-
+    // upright like a pocket). Otherwise we leave the bike alone at whatever it is. The phone's light sensor is already on for its own
+    // auto-brightness, so this costs nothing extra; the bike gets one 20-byte write only when the level really changes.
+    { const trust = live && P.clusterBright && st.mount === "mount" && st.sky === "open" && !B.clMan;
+      const lux = st.time === "night" ? 6 : st.gpsLost ? 90 : { shade: 3000, bright: 25000, direct: 90000 }[st.sun];
+      const want = lux < 15 ? 2 : lux < 150 ? 4 : lux < 1500 ? 6 : lux < 12000 ? 8 : 10;   // log steps: night · tunnel/dusk · evening · daylight shade · sun
+      const why = st.mount !== "mount" ? "phone in a pocket" : st.sky !== "open" ? "light sensor covered" : B.clMan ? "you set it yourself" : !live ? "not connected" : "";
+      if (why !== B.clWhy) { if (why && P.clusterBright) evlog(`Bike brightness: not touching it (${why}). It stays at ${B.clLvl}.`); B.clWhy = why; }
+      if (trust && want !== B.clLvl) {
+        B.clS = want === B.clWant ? B.clS + 1 : 1; B.clWant = want;
+        // brighter quickly (glare matters now), dimmer slowly (a shadow or a bridge shouldn't flicker the display)
+        if (B.clS >= (want > B.clLvl ? 2 : 6)) { const from = B.clLvl; B.clLvl = want; B.clS = 0;
+          evlog(`Bike display brightness ${from} → ${want} (light ≈ ${lux.toLocaleString()} lux, steady for ${want > from ? 2 : 6} s). Sent 5A F1 ${want.toString(16).toUpperCase().padStart(2, "0")} …; the bike confirms it in 0x11 byte 17`); }
+      } else if (B.clWant !== B.clLvl || !trust) { B.clS = 0; B.clWant = B.clLvl; } }
+    // lean angle from the phone's gyroscope + accelerometer (only when it's on the mount; zeroed while riding straight)
+    if (st.mount === "mount" && B.speed > 15) { B.lean = Math.round((Math.random() * 2 - 1) * Math.min(38, B.speed * .45));
+      if (B.lean < 0) B.maxL = Math.max(B.maxL, -B.lean); else B.maxR = Math.max(B.maxR, B.lean); } else B.lean = 0;
+    // ---- which screen: decided by the bike, never by a button. Two agreeing readings before switching, and a gap between the
+    // fast thresholds so it can't flicker around 70 km/h. Parked = STOPPED with the stand down. Stand down while moving = alarm.
+    const parkedNow = !live || (B.speed === 0 && B.stand);
+    B.parkS = parkedNow ? B.parkS + 1 : 0;
+    B.fastS = live && B.speed >= P.fastKmh ? B.fastS + 1 : 0;
+    B.slowS = B.speed < P.fastKmh - 15 ? B.slowS + 1 : 0;
+    let m = B.mode;
+    if (!live || B.parkS >= 2) m = "park"; else if (m === "park" && !parkedNow) m = "ride";
+    if (m === "ride" && B.fastS >= 3) m = "fast";
+    if (m === "fast" && B.slowS >= 4) m = "ride";
+    if (m !== B.mode) { evlog(`Screen → ${{ park: "Parked (stopped, stand down): everything", ride: "Riding: mileage, next turn, range, trip, time", fast: "Fast: turn compass and mileage glow only" }[m]}`); B.mode = m; }
+    if (live && B.stand && B.speed > 3) { if (++B.standS === 2) { evlog("EMERGENCY: side stand down while moving (2 readings agree): the bike cuts the engine → screen flashes STAND"); if (P.sndWarn) cue("urgent", "Side stand", true, "emergency alarm"); } } else B.standS = 0;
+    // next turn shows about 36 s before it (200 m – 1 km): at 100 km/h that's ~1 km out, at 30 km/h ~300 m
+    if (live && st.nav && P.navOn && !B.turnOn && B.navM <= Math.max(200, Math.min(1000, B.speed / 3.6 * 36))) { B.turnOn = true; B.turnFrom = Math.max(1, B.navM); }
+    // speed alert (BikeService.checkSpeed): 3 s over the limit, at most every 30 s
+    if (live && P.speedAlert && B.speed > P.limit) { B.overS++; if (B.overS === 3 || (B.overS > 3 && (B.overS - 3) % 30 === 0)) {
+      if (P.sndSpeed) cue("speed", "Slow down", false, `over the limit (${B.speed} km/h)`); else evlog(`Over ${P.limit} km/h (helmet alert off)`);
+      if (P.clusterOverspeed) evlog("Bike display: its own overspeed warning"); } }
+    else { B.overS = 0; if (B.forceFast && B.speed > P.limit + 5) setTimeout(() => B.forceFast = false, 6000); }
+    if (B.forceHigh) B.target = 110;
+    // turn cues in the helmet (Google Maps' own voice keeps working too)
+    if (live && st.nav && P.navOn) {
+      if (B.navPrev > 300 && B.navM <= 300 && P.sndTurns) cue(NAVSND[B.navDir][0], P.sayTurns ? NAVWORD[B.navDir] : "", false, `${NAVWORD[B.navDir].toLowerCase()} in 300 m`);
+      if (B.navPrev > 50 && B.navM <= 50 && P.sndTurns && NAVSND[B.navDir][1]) cue(NAVSND[B.navDir][1], "", false, `${NAVWORD[B.navDir].toLowerCase()} now`);
+      B.navPrev = B.navM;
+    }
+    // indicator left on
+    const ind = !!B.blinkSide && !st.hazard;
+    B.indOnS = ind && B.speed > 20 ? B.indOnS + 1 : 0;
+    if (B.indOnS === 30 && P.sndInd) cue("ind_forgot", "Indicator", false, "indicator left on");
+    // held calls/messages come through once you slow down
+    if (held.length && (!live || B.speed < P.slowKmh)) {
+      evlog(`Slowed to ${live ? B.speed : 0} km/h → releasing ${held.length} held`);
+      if (P.sndMissed && st.intercom) {
+        const seq = held.filter(h => h.kind === "call").slice(0, 3).map(() => "missed_call").concat(held.filter(h => h.kind !== "call").slice(0, 3).map(() => "message"));
+        seq.forEach((n, i) => play(n, i * .55));
+        const talk = P.voice === "more";
+        evlog(`🔊 Helmet: ${seq.map(n => n === "missed_call" ? "ring-chirp" : "pop").join(" ")}${talk ? " + names" : ""}`);
+        if (talk) say(held.map(h => (h.kind === "call" ? "Call, " : "Message, ") + h.who).join(". "), seq.length * 550 + 300);
+      }
+      deliver(held); held = []; }
+    if (live && B.aboveS > 20 && released.seen) { released = []; }
+    if (st.tab === 0) {
+      const wantNight = panelOn();
+      if (wantNight !== !!$("np")) showTab(0, true);
+      else if (wantNight) renderNight(live); else { renderRide(live); if ($("revealT")) $("revealT").textContent = Math.ceil((revealUntil - Date.now()) / 1000); }
+    }
+    if (st.tab === 1) renderLiveTrip();
+  }
+
+  let blinkOn = false;
+  setInterval(() => {
+    blinkOn = !blinkOn; if (st.tab === 0) renderLamps(st.phase === "LIVE");
+    if (st.intercom && P.sndInd && st.phase === "LIVE" && (st.hazard || B.blinkSide)) play((blinkOn ? "ind_tick_" : "ind_tock_") + (st.hazard ? "both" : B.blinkSide));
+  }, 360);
+
+  function connInfo() {
+    if (!P.running) return ["var(--onv)", "Stopped", false];
+    return { LIVE: ["#1FA463", "Connected to TVS22XXXXXXXX", false], CONNECTING: ["var(--primary)", "Connected, reading bike…", true],
+      WAITING: ["var(--primary)", "Waiting for the bike (ignition on?)", true], PROBLEM: ["#E5484D", "Bluetooth is off", false], OFF: ["var(--onv)", "Bike off · connects by itself when you turn it on", false] }[st.phase];
+  }
+  const connHTML = () => `<div class="conn"><span class="dot conn-dot"></span><span class="txt bodyMedium conn-txt"></span></div>`;
+  function renderConn() {
+    const C = connInfo();
+    document.querySelectorAll(".conn-dot").forEach(d => { d.style.background = C[0]; d.classList.toggle("busy", C[2]); });
+    document.querySelectorAll(".conn-txt").forEach(t => { if (t.textContent !== C[1]) { t.animate([{ opacity: 0 }, { opacity: 1 }], 250); t.textContent = C[1]; } });
+  }
+
+  // ================= RIDE
+  function rideHTML() {
+    const stat = (n, id, v = "") => `<div class="stat"><div class="labelMedium muted">${n}</div><div class="titleLarge v" id="${id}">${v}</div></div>`;
+    return `<div class="content">
+      <div class="toprow">${connHTML()}<div class="sos" id="sos"><span class="fill"></span><span style="position:relative">SOS · hold</span></div></div>
+      <div class="panel"><div class="speedrow"><div class="l"><div class="speed" id="speed"></div><div class="muted bodyMedium" style="margin-top:2px">km/h</div></div>
+        <div class="gear" id="gear"></div></div><div class="gap12"></div>
+        <div class="label labelLarge"><span class="n">RPM</span><span class="v" id="rpmV">0</span></div><div class="bar"><i id="rpmBar"></i></div></div>
+      <div class="lamps labelLarge" id="lamps"></div>
+      <div class="appear" id="askA"><div><div class="panel ask" id="askBox"></div></div></div>
+      <div class="appear" id="tripA"><div><div class="panel">
+        <div class="row">${stat("Mileage now", "liveK").replace('class="titleLarge v"', 'class="titleLarge v kcol"')}${stat("Trip average", "tripKmpl")}</div>
+        <div class="mbar"><span class="avg"></span><span class="cur" id="mCur" style="left:50%"></span></div>
+        <div class="mscale"><span>worse</span><span>trip average</span><span>better</span></div>
+        <div class="gap10"></div><div class="bodyMedium muted">This trip <span id="tlKm"></span>  ·  <span id="tlL"></span>  ·  <span id="tlRs"></span><span id="tlIdle"></span><span id="tlGps"></span></div></div></div></div>
+      <div class="appear" id="navA"><div><div class="panel"><div class="nav"><span class="arrow" id="navArrow">↰</span>
+        <div style="flex:1;min-width:0"><div class="headlineMedium" id="navDist"></div><div class="bodyLarge" id="navRoad"></div><div class="muted bodyMedium" id="navMin"></div></div></div></div></div></div>
+      <div class="panel"><div class="label labelLarge"><span class="n">Fuel</span><span class="v" id="fuelV"></span></div><div class="bar"><i id="fuelBar"></i></div>
+        <div class="gap10"></div><div class="row">${stat("Range", "dte")}${stat("Odometer", "odo")}</div>
+        <div class="bodyMedium muted" style="margin-top:6px">Range = petrol left × how you've been riding (last ~50 km). The bike's own range is ignored.</div></div>
+      <div class="panel"><div class="row">${stat("Trip A", "ta")}${stat("Trip B", "tb")}</div><div class="gap10"></div>
+        <div class="row">${stat("Engine", "temp")}${stat("Battery", "batt")}</div><div class="gap10"></div><div class="row">${stat("Top speed", "top")}${stat("Throttle", "thr")}</div><div class="gap10"></div><div class="row">${stat("Max lean, left", "lnL")}${stat("Max lean, right", "lnR")}</div></div>
+      <div class="appear on" id="svcA"><div><div class="panel"><div class="labelMedium muted">Service</div><div class="titleLarge" id="svc"></div></div></div></div>
+      <div class="panel"><div class="row">${stat("Missed calls", "mc", B.missed)}${stat("Unread messages", "um", B.unread)}</div></div>
+    </div>`;
+  }
+  function rollDigits(el, value, prevValue) {
+    const s = String(value), up = value >= prevValue, old = el._digits || [], fresh = [];
+    el.innerHTML = "";
+    for (let i = 0; i < s.length; i++) {
+      const k = s.length - i, p = old.find(o => o.k === k), span = document.createElement("span");
+      if (p && p.ch !== s[i]) { span.className = "dg " + (up ? "up" : "down"); span.innerHTML = `<span class="old">${p.ch}</span><span class="new">${s[i]}</span>`; }
+      else if (!p && old.length) { span.className = "dg " + (up ? "up" : "down"); span.innerHTML = `<span class="new">${s[i]}</span>`; }
+      else { span.className = "dg"; span.innerHTML = `<span>${s[i]}</span>`; }
+      el.appendChild(span); fresh.push({ k, ch: s[i] });
+    }
+    el._digits = fresh;
+  }
+  function setGear(label) {
+    const g = $("gear"), cur = g._v;
+    if (cur === label) return;
+    const up = (parseInt(label) || 0) >= (parseInt(cur) || 0); g._v = label;
+    const old = g.querySelector("span:last-child"), n = document.createElement("span");
+    n.textContent = label; n.style.color = label === "N" ? "#1FA463" : "var(--primary)"; g.appendChild(n);
+    if (cur === undefined) return;
+    n.animate([{ transform: `translateY(${up ? 100 : -100}%)`, opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 300, easing: "ease-out" });
+    if (old) old.animate([{ transform: "none", opacity: 1 }, { transform: `translateY(${up ? -100 : 100}%)`, opacity: 0 }], { duration: 300, easing: "ease-in", fill: "forwards" }).onfinish = () => old.remove();
+  }
+  const lampDefs = [
+    ["◀ Left", () => (st.hazard || B.blinkSide === "left") && blinkOn, "#5CC27C"], ["Right ▶", () => (st.hazard || B.blinkSide === "right") && blinkOn, "#5CC27C"],
+    ["⚠ Hazard", () => st.hazard && blinkOn, "#FF7A6E"],
+    ["High beam", () => B.high, "#6EA8FF"], ["Neutral", () => B.neutral && B.engine, "#5CC27C"], ["Engine on", () => B.engine, "#5CC27C"],
+    ["Side stand", () => B.stand || (st.standMoving && blinkOn), "#FF7A6E"], ["Clutch", () => B.clutch, "#FFAD33"], ["Engine lamp", () => B.mil, "#FFAD33"], ["ABS", () => B.abs, "#FFAD33"]];
+  function renderLamps(live) {
+    const box = $("lamps"); if (!box) return;
+    if (!box.children.length) lampDefs.forEach(([n]) => { const e = document.createElement("span"); e.className = "lamp"; e.textContent = n; box.appendChild(e); });
+    lampDefs.forEach(([, on, c], i) => { const e = box.children[i], o = live && on(); e.style.background = o ? c + "2e" : ""; e.style.color = o ? c : ""; });
+  }
+  let prevSpeed = 0;
+  function renderRide(live) {
+    if (!$("speed")) return;
+    renderConn();
+    if (live) { rollDigits($("speed"), B.speed, prevSpeed); prevSpeed = B.speed; } else { $("speed").textContent = "--"; $("speed")._digits = null; }
+    setGear(live ? (B.gear ? String(B.gear) : "N") : "–");
+    const rf = live ? Math.min(1, B.rpm / 9000) : 0, t = Math.max(0, Math.min(1, (rf - .7) / .3));
+    $("rpmBar").style.transform = `scaleX(${rf})`; $("rpmBar").style.background = `color-mix(in srgb, #E5484D ${Math.round(t * 100)}%, var(--primary))`;
+    setNum($("rpmV"), live ? B.rpm : null);
+    renderLamps(live);
+    $("tripA").classList.toggle("on", B.tripKm > 0);
+    const moving = live && B.speed > 3, idling = live && !moving && B.engine;
+    if (moving) setNum($("liveK"), B.live, nf(0, " km/l"), "liveK");
+    else if (idling) setNum($("liveK"), B.lph, nf(2, " L/h"), "liveK:idle");
+    else setNum($("liveK"), null);
+    $("liveK").style.color = moving ? mileColor(B.live) : "";
+    setNum($("tripKmpl"), B.kmpl || null, nf(1, " km/l"));
+    $("mCur").style.left = (moving && B.kmpl ? Math.max(0, Math.min(1, (B.live / B.kmpl - .5))) * 100 : 50) + "%";
+    $("mCur").style.background = moving ? mileColor(B.live) : "";
+    setNum($("tlKm"), B.tripKm, nf(1, " km")); setNum($("tlL"), B.L, nf(2, " L")); setNum($("tlRs"), B.L * P.price, nf(0, "", "₹"));
+    setTxt($("tlIdle"), idling ? "  ·  idling" : "");
+    $("navA").classList.toggle("on", st.nav && P.navOn);
+    setTxt($("navArrow"), NAVDIR[B.navDir][0]);
+    if (B.navM >= 1000) setNum($("navDist"), B.navM / 1000, nf(1, " km"), "navDist:km"); else setNum($("navDist"), B.navM, nf(0, " m"), "navDist:m");
+    setTxt($("navRoad"), NAVDIR[B.navDir][1]); setNum($("navMin"), B.navMin, nf(0, " min left"));
+    const low = ourRange() < 40;
+    setNum($("fuelV"), B.tankL, nf(1, " L")); $("fuelBar").style.transform = `scaleX(${B.tankL / P.tank})`; $("fuelBar").style.background = low ? "#E5484D" : "var(--primary)";
+    setTxt($("tlGps"), st.gpsLost ? "  ·  no GPS: bike speed" : "");
+    const a = $("askA"); a.classList.toggle("on", askVisible());
+    if (B.ask && a._st !== B.ask.stage + !!B.ask.late) drawAsk(); if (!B.ask) a._st = null;
+    setNum($("dte"), ourRange(), nf(0, " km")); setNum($("odo"), B.odo, nf(1, " km"));
+    setNum($("ta"), B.tripA, nf(1, " km")); setNum($("tb"), B.tripB, nf(1, " km"));
+    setNum($("temp"), live ? B.temp : null, nf(0, " °C")); setNum($("batt"), live ? B.batt : null, nf(1, " V"));
+    setNum($("lnL"), st.mount === "mount" ? B.maxL : null, nf(0, "°")); setNum($("lnR"), st.mount === "mount" ? B.maxR : null, nf(0, "°"));
+    setNum($("top"), B.top, nf(0, " km/h")); setNum($("thr"), live ? B.throttle : null, nf(0, "%"));
+    const left = st.service ? -42 : Math.round(nextService() - B.odo);
+    if (left <= 0) setNum($("svc"), -left, n => `Overdue by ${Math.round(n)} km`, "svc:over"); else setNum($("svc"), left, n => `In ${Math.round(n)} km`, "svc:in");
+    $("svc").style.color = left <= 0 ? "var(--error)" : "";
+  }
+  // ---- motion: no number ever jumps. Numbers count to the new value, text cross-fades, bars and colours glide (CSS transitions).
+  // The last shown value is kept per key, so a rebuilt view carries on from where it was instead of restarting from 0.
+  const NUMS = {}, KEYS = {}, easeOut = k => 1 - Math.pow(1 - k, 3);
+  function setTxt(el, s) {
+    if (!el || el.textContent === s) return;
+    cancelAnimationFrame(el._r); el.textContent = s;
+    el.animate([{ opacity: 0, transform: "translateY(3px)" }, { opacity: 1, transform: "none" }], { duration: 300, easing: "ease-out" });
+  }
+  function setNum(el, v, fmt = n => Math.round(n), key = el && el.id) {
+    if (!el) return;
+    const unitChanged = KEYS[el.id] !== undefined && KEYS[el.id] !== key; KEYS[el.id] = key;   // e.g. "km/l" ↔ "L/h", "m" ↔ "km"
+    if (v == null || !isFinite(v)) { NUMS[key] = null; setTxt(el, "–"); return; }
+    const from = unitChanged ? null : NUMS[key]; NUMS[key] = v;
+    if (from == null) { setTxt(el, String(fmt(v))); return; }        // first value (or after "–"): fade in
+    cancelAnimationFrame(el._r);
+    if (from === v) { el.textContent = fmt(v); return; }
+    const t0 = performance.now(), D = Math.abs(v - from) > 0 ? 650 : 0;
+    const f = now => { const k = Math.min(1, (now - t0) / D); el.textContent = fmt(from + (v - from) * easeOut(k)); if (k < 1) el._r = requestAnimationFrame(f); };
+    el._r = requestAnimationFrame(f);
+  }
+  const nf = (dec, suf = "", pre = "") => n => pre + n.toFixed(dec) + suf;
+  // mileage colour: red (≤ 28 km/l, hard riding) → orange (32, 120 km/h) → yellow-green (42, TVS's claim) → green (≥ 46, smooth)
+  const mileHue = k => Math.max(0, Math.min(1, (k - 28) / (46 - 28))) * 125;
+  const mileColor = (k, night) => night ? `hsl(${mileHue(k)} 85% 52%)` : `hsl(${mileHue(k)} ${st.theme === "dark" ? "70% 58%" : "75% 38%"})`;
+  // ---- "Filled up?" One question, answered with one tap (full tank) or a number (litres or ₹, the way pumps in India sell it)
+  const pumpSvg = `<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${'<path d="M5 20.5V5.5a2 2 0 0 1 2-2h5.5a2 2 0 0 1 2 2v15M3.5 20.5h12.5M14.5 9.5h1.8a1.7 1.7 0 0 1 1.7 1.7v4.6a1.4 1.4 0 0 0 2.8 0V8.2l-3-3"/><path d="M7.5 8h4.5"/>'}</svg>`;
+  // a late question (already guessed from the gauge) waits quietly and only shows when you're stopped
+  const askVisible = () => !!B.ask && (!B.ask.late || B.belowS >= 3);
+  // Nobody has to answer. No answer → the bike's fuel gauge decides: how far it went up = litres added (≥ 95 % = full tank).
+  // An answer always wins over the gauge guess (the guess is undone first).
+  function gaugeFill() {
+    const a = B.ask, g0 = a.gauge0, g1 = B.fuel, full = g1 >= 95;
+    a.snap = { tankL: B.tankL, burnRaw: B.burnRaw, poured: B.poured, fullKnown: B.fullKnown, fuelCal: P.fuelCal };
+    const added = full ? P.tank - B.tankL : (g1 - g0) / 100 * P.tank;
+    if (full) {
+      if (B.fullKnown) {   // full → full by the gauge alone: coarse, so it nudges the model only a little
+        const actual = (100 - g0) / 100 * P.tank + B.poured, ratio = actual / Math.max(.5, B.burnRaw), prev = P.fuelCal;
+        if (Math.abs(ratio / prev - 1) <= .3) { P.fuelCal = prev + .15 * (ratio - prev); evlog(`Gauge-only full to full: about ${actual.toFixed(1)} L used → fuel model ×${prev.toFixed(3)} → ×${P.fuelCal.toFixed(3)} (small step, the gauge is rough)`); }
+      }
+      B.tankL = P.tank; B.burnRaw = 0; B.poured = 0; B.fullKnown = true;
+    } else { B.tankL = Math.min(P.tank, B.tankL + added); B.poured += added; }
+    a.guess = full ? "full tank" : `about ${added.toFixed(1)} L`; a.late = true; a.stage = "ask";
+    evlog(`No answer → going by the bike's fuel gauge (${g0}% → ${g1}%): ${a.guess}. Petrol left and range updated. The question waits in the app, no notification.`);
+  }
+  function drawAsk() {
+    const a = $("askA"), box = $("askBox"), k = B.ask.stage; a._st = k + !!B.ask.late;
+    const head = (t, sub) => `<div class="askrow">${pumpSvg}<div><div class="titleMedium">${t}</div><div class="bodyMedium muted">${sub}</div></div></div>`;
+    const pumpL = (B.ask.pumped || Math.max(.5, P.tank - B.trueL)).toFixed(1);   // mock: what the pump showed
+    const when = B.ask.at ? B.ask.at.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "";
+    if (k === "ask" && B.ask.late) box.innerHTML = head(`Filled up at ${esc(B.ask.station || "the fuel station")}, ${when}?`, `Going by the fuel gauge: ${esc(B.ask.guess)}. Correct it if you like, or just ignore this.`) +
+      `<div class="askbtns"><button class="btn" data-ask="full">Full tank</button><button class="btn tonal" data-ask="litres">Litres</button><button class="btn tonal" data-ask="rs">₹</button><button class="btn text" data-ask="keep">Looks right</button><button class="btn text" data-ask="no">Didn't fill</button></div>`;
+    else if (k === "ask") box.innerHTML = head("Filled up?", esc(B.ask.station || "Fuel gauge went up")) +
+      `<div class="askbtns"><button class="btn" data-ask="full">Full tank</button><button class="btn tonal" data-ask="litres">Litres</button><button class="btn tonal" data-ask="rs">₹</button><button class="btn text" data-ask="no">No</button></div>`;
+    else if (k === "litres" || k === "rs") box.innerHTML = head(k === "rs" ? "How many rupees?" : "How many litres?", k === "rs" ? `At ₹${P.price}/L (change in Settings)` : "As shown on the pump") +
+      `<div class="chips">${(k === "rs" ? [100, 200, 500, 1000] : [1, 2, 5, 10]).map(v => `<button data-v="${v}">${k === "rs" ? "₹" + v : v + " L"}</button>`).join("")}</div>
+       <input id="askIn" inputmode="decimal" placeholder="${k === "rs" ? "₹" : "litres"}"><div class="askbtns"><button class="btn" data-ask="ok">OK</button><button class="btn text" data-ask="back">Back</button></div>`;
+    else if (k === "pump") box.innerHTML = head("Full tank. Litres on the pump?", "Optional: it makes your mileage and range exact") +
+      `<input id="askIn" inputmode="decimal" value="${pumpL}" placeholder="litres"><div class="askbtns"><button class="btn" data-ask="ok">OK</button><button class="btn text" data-ask="skip">Skip</button></div>`;
+    box.onclick = e => {
+      const c = e.target.closest("[data-v]"); if (c) { $("askIn").value = c.dataset.v; return; }
+      const b = e.target.closest("[data-ask]"); if (!b) return; const act = b.dataset.ask, v = parseFloat(($("askIn") || {}).value);
+      if (act === "full") B.ask.stage = "pump"; else if (act === "litres" || act === "rs") B.ask.stage = act; else if (act === "back") B.ask.stage = "ask";
+      else if (act === "keep") { evlog(`Kept the gauge guess (${B.ask.guess})`); B.ask = null; }
+      else if (act === "no") { undoGuess(); if (!B.ask.late) B.trueL -= B.ask.pumped || 0;
+        evlog(B.ask.late ? "Didn't fill → the gauge guess is undone" : "Didn't fill up → nothing changes"); B.ask = null; B.station = null; }
+      else if (act === "skip") fillDone("full", null);
+      else if (act === "ok") { if (!(v > 0)) { toast("Enter a number"); return; }
+        if (k === "pump") fillDone("full", v); else fillDone("add", k === "rs" ? v / P.price : v, k === "rs" ? v : null); }
+      tick(); };
+  }
+  function undoGuess() { const z = B.ask && B.ask.snap; if (!z) return; B.tankL = z.tankL; B.burnRaw = z.burnRaw; B.poured = z.poured; B.fullKnown = z.fullKnown; P.fuelCal = z.fuelCal; }
+  function fillDone(kind, litres, rupees) {
+    if (B.ask && B.ask.snap) { undoGuess(); evlog("Your answer replaces the fuel-gauge guess"); }
+    if (kind === "full") {
+      if (litres != null && B.fullKnown) {
+        // full to full: everything poured since the last full tank = what the bike really burned since then
+        const actual = litres + B.poured, ratio = actual / Math.max(.5, B.burnRaw), prev = P.fuelCal;
+        if (Math.abs(ratio / prev - 1) > .3) evlog(`Full tank: ${actual.toFixed(1)} L poured vs ${(B.burnRaw * prev).toFixed(1)} L expected is too far off (typo, or not filled to the top?) → not used to calibrate`);
+        else { const w = actual / (actual + 8); P.fuelCal = prev + w * (ratio - prev); P.fulls++;
+          evlog(`Full to full: ${actual.toFixed(1)} L poured, the model expected ${(B.burnRaw * prev).toFixed(1)} L → your bike's fuel model ×${prev.toFixed(3)} → ×${P.fuelCal.toFixed(3)} (fill #${P.fulls})`); }
+      } else evlog("Full tank, litres skipped → petrol left set to a full tank; the next full tank with litres calibrates");
+      B.tankL = P.tank; B.trueL = P.tank; B.burnRaw = 0; B.poured = 0; B.fullKnown = true;
+      toast(litres != null ? `Full tank · ${litres} L · calibrated` : "Full tank");
+    } else {
+      const room = P.tank - B.tankL;
+      if (litres > room + .7) evlog(`${litres.toFixed(1)} L is more than our estimate says fits (${room.toFixed(1)} L) → petrol left was too low; set to full`);
+      B.tankL = Math.min(P.tank, B.tankL + litres); B.trueL = Math.min(P.tank, B.trueL + litres); B.poured += litres;
+      evlog(`${rupees ? `₹${rupees} = ` : ""}${litres.toFixed(2)} L added → petrol left ${B.tankL.toFixed(1)} L (counts toward the next full-to-full calibration)`);
+      toast(`+${litres.toFixed(1)} L`);
+    }
+    B.ask = null; B.station = null; st.lowfuel = false; syncCtl();
+  }
+  function wireSos() {
+    const s = $("sos"); let tm = 0;
+    s.onpointerdown = () => { s.classList.add("holding"); tm = setTimeout(() => { s.classList.remove("holding"); openCrash("Manual SOS (SOS button held)"); }, 550); };
+    s.onpointerup = s.onpointerleave = () => { clearTimeout(tm); s.classList.remove("holding"); };
+  }
+
+
+  // ================= NIGHT PANEL (OLED)
+  // Riding: only what the bike can't show (live mileage by default) + emergencies. Stopped: everything fades in.
+  // Line icons (24×24, stroke = glow colour). Shapes are the label; numbers only where a number is the point.
+  const IC = {
+    road: '<path d="M8 3 4.5 21M16 3l3.5 18M12 4v2.5M12 10v3M12 16.5V20"/>',
+    clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+    speedo: '<path d="M4.2 17.5a8.5 8.5 0 1 1 15.6 0"/><path d="m12 13.5 4.2-4.2"/><circle cx="12" cy="13.5" r="1.2"/>',
+    leaf: '<path d="M5 19.5c0-8.5 5.5-14 14.5-14.5C19 14 13.5 19.5 5 19.5z"/><path d="M5 19.5 13.5 11"/>',
+    drop: '<path d="M12 3.5c3.6 4.4 6 7.7 6 10.8a6 6 0 0 1-12 0c0-3.1 2.4-6.4 6-10.8z"/>',
+    idle: '<circle cx="12" cy="13" r="7.5"/><path d="M12 13V9M9.5 3.5h5M12 3.5v2"/>',
+    pump: '<path d="M5 20.5V5.5a2 2 0 0 1 2-2h5.5a2 2 0 0 1 2 2v15M3.5 20.5h12.5M14.5 9.5h1.8a1.7 1.7 0 0 1 1.7 1.7v4.6a1.4 1.4 0 0 0 2.8 0V8.2l-3-3"/><path d="M7.5 8h4.5"/>',
+    thermo: '<path d="M10 14V5.5a2 2 0 0 1 4 0V14a4 4 0 1 1-4 0z"/><path d="M12 9.5v6.5"/>',
+    phone: '<path d="M6 3.5h3.2l1.8 4.6-2.3 1.4a11 11 0 0 0 5.8 5.8l1.4-2.3 4.6 1.8V18a2.5 2.5 0 0 1-2.5 2.5A15 15 0 0 1 3.5 6 2.5 2.5 0 0 1 6 3.5z"/>',
+    chat: '<path d="M20.5 11.5a8 8 0 0 1-11.6 7.1L4 19.8l1.3-4.4A8 8 0 1 1 20.5 11.5z"/>',
+    wrench: '<path d="M14.5 3.8a5 5 0 0 0-4.3 6.8l-6.4 6.4a1.9 1.9 0 0 0 2.7 2.7l6.4-6.4a5 5 0 0 0 6.8-4.3l-2.9 2.1-2.6-.6-.6-2.6z"/>',
+    engine: '<path d="M4 9.5h2.5V7.5h4.5V6h3v1.5h3l2 2.5H21v5.5h-2l-2 2.5H8l-1.5-2.5H4z"/><path d="M12 10.5v3M12 15.5v.3"/>',
+    abs: '<circle cx="12" cy="12" r="8.5"/><path d="M7.5 14.5 9 9.5l1.5 5M8 13h2M12.5 9.5v5h1.3a1.2 1.2 0 0 0 0-2.5h-1.3 1.1a1.2 1.2 0 0 0 0-2.5zM18 10a1.4 1.4 0 0 0-2.6.6c0 1.6 2.8.9 2.8 2.6a1.4 1.4 0 0 1-2.8.4"/>',
+    btoff: '<path d="M7 7l10 10-5 4V12M12 8V3l5 4-2.2 1.8M3.5 3.5l17 17"/>',
+    stand: '<circle cx="6.5" cy="15.5" r="3"/><circle cx="18" cy="15.5" r="3"/><path d="M6.5 15.5 10 9h5.5l2.5 6.5M9 9h-2M12 9l-2.5 12"/>',
+    left: '<path d="M16 21v-8.5a3.5 3.5 0 0 0-3.5-3.5H5"/><path d="M9 5 5 9l4 4"/>',
+    right: '<path d="M8 21v-8.5A3.5 3.5 0 0 1 11.5 9H19"/><path d="m15 5 4 4-4 4"/>',
+    straight: '<path d="M12 21V4"/><path d="m6.5 9.5 5.5-5.5 5.5 5.5"/>',
+    round: '<circle cx="12" cy="10" r="4"/><path d="M12 21v-7M14.8 7.2 19 3M19 7V3h-4"/>',
+    battery: '<rect x="2.5" y="7" width="17" height="10" rx="2"/><path d="M22 10.5v3"/>',
+  };
+  const ic = (n, extra = "") => `<svg class="ic" viewBox="0 0 24 24">${IC[n]}${extra}</svg>`;
+  const NAVIC = ["left", "right", "straight", "round"];
+  const W = {};   // last bar widths, so a rebuilt row glides from where it was
+  const barS = (id, mark) => `<span class="np-bar"><i id="${id}" style="width:${W[id] || 0}%"></i>${mark != null ? `<u style="left:${mark * 100}%"></u>` : ""}</span>`;
+  const setW = (id, f) => { W[id] = Math.max(0, Math.min(1, f)) * 100; if ($(id)) $(id).style.width = W[id] + "%"; };
+  const bar = (f, mark) => `<span class="np-bar"><i style="width:${Math.max(0, Math.min(1, f)) * 100}%"></i>${mark != null ? `<u style="left:${mark * 100}%"></u>` : ""}</span>`;
+
+  function nightHTML() {
+    return `<div class="np" id="np">
+      <div class="np-emerg np-el" id="npEm" style="z-index:2;display:flex;align-items:center;justify-content:center;gap:12px">${ic("stand").replace('class="ic"', 'class="ic" style="width:34px;height:34px;opacity:1;stroke:#fff"')}STAND</div>
+      <div class="np-ride np-el" id="npRide">
+        <div class="np-nav np-el" id="npNav"><div class="np-turn" id="npTurn"><span id="npArrow"></span><div class="np-tdist"><b id="npDist"></b><small>m</small></div></div></div>
+        <div class="np-center">
+          <svg class="np-gauge" id="npGauge" viewBox="0 0 250 150">
+            <path class="bg" d="M25 130 A100 100 0 0 1 225 130" pathLength="100"/>
+            <path class="fg" id="npArc" d="M25 130 A100 100 0 0 1 225 130" pathLength="100" stroke-dasharray="0 101" style="stroke-opacity:0"/>
+            <circle class="claim" id="npClaim" cx="125" cy="8" r="2.6"/>
+            <path class="tk" id="npAvg" d="M125 14 L125 44"/>
+            <g id="npLeaf" transform="translate(113 80)" style="color:var(--glow);opacity:.55;transition:color 1.6s"><svg class="ic" viewBox="0 0 24 24" width="24" height="24" style="opacity:1">${IC.leaf}</svg></g>
+            <text id="npNum" x="125" y="136">–</text>
+          </svg>
+          <div class="np-speed" id="npBig">--</div><div class="np-unit" id="npUnit">KM/H</div>
+        </div>
+        <div class="np-rinfo" id="npInfo"><span>${ic("pump")}<b id="riR"></b><small>km</small></span><span>${ic("road")}<b id="riK"></b><small>km</small></span><span>${ic("clock")}<b id="riT"></b></span></div>
+        <div class="np-warn np-el" id="npWarn">${ic("btoff").replace('class="ic"', 'class="ic" style="width:34px;height:34px;opacity:1"')}</div>
+      </div>
+      <div class="np-fast np-el" id="npFast">
+        <div class="np-fglow" id="npFglow"></div>
+        <div class="np-cmpw" id="npCmp">
+          <svg class="np-cmp2" viewBox="0 0 220 220">
+            <circle class="ring" cx="110" cy="110" r="96"/>
+            ${Array.from({ length: 24 }, (_, i) => `<line class="tk${i % 6 ? "" : " big"}" x1="110" y1="${i % 6 ? 18 : 14}" x2="110" y2="26" transform="rotate(${i * 15} 110 110)"/>`).join("")}
+            <g class="arr" id="cmpArr"><path d="M110 40 L146 150 L110 128 L74 150 Z"/></g>
+          </svg>
+          <div class="np-cdist"><b id="cmpDist"></b><small>m</small></div>
+        </div>
+      </div>
+      <div class="np-stop np-el" id="npStop"></div>
+      <div class="np-hint np-el on" id="npHint" style="opacity:.3"><div style="font-size:18px;line-height:1">︿</div>Swipe up to see everything</div>
+    </div>`;
+  }
+  const roundM = m => m >= 100 ? Math.round(m / 10) * 10 : Math.max(0, Math.round(m));   // turn distance: always metres, never a bar
+  const onEl = (id, v) => $(id) && $(id).classList.toggle("on", !!v);
+  // the focus screens (riding and fast, day and night; parked at night) vs the full dashboard (parked in the day, or swiped up)
+  const panelOn = () => st.tab === 0 && !revealing() && (nightActive() || B.mode !== "park");
+  // compass: points at where the turn is (estimated from GPS + the distance Maps gives), then swings to the exit in the last ~120 m
+  const navAngle = () => { const exitA = [-90, 90, 0, 50][B.navDir], bear = B.navCurve * Math.min(1, B.navM / 600), k = Math.max(0, Math.min(1, 1 - (B.navM - 20) / 110)); return bear * (1 - k) + exitA * k; };
+  function renderNight(live) {
+    const np = $("np"); if (!np) return;
+    const night = nightActive(), md = B.mode, stopped = md === "park";
+    np.classList.toggle("day", !night);
+    np.style.setProperty("--glow", night ? dimC(glowBase()) : "var(--on)"); np.style.setProperty("--warnc", night ? dimC("#FFB020") : "#E8930C");
+    const mc = k => night ? dimC(mileColor(k, true)) : mileColor(k);
+    onEl("npRide", md === "ride"); onEl("npStop", stopped); onEl("npFast", md === "fast");
+    onEl("npEm", live && B.stand && B.speed > 0);
+    // riding view: one shape to glance at. Gauge: top = your trip average, right of top = better than average.
+    const show = P.nightShow;
+    $("npGauge").style.display = show === "mileage" ? "" : "none";
+    $("npBig").style.display = $("npUnit").style.display = show === "speed" ? "" : "none";
+    if (show === "mileage") {
+      // fixed scale 15 → 65 km/l, so the arc's length and its colour always mean the same thing.
+      // Tick = your average (moves slowly), dot outside the arc = TVS's 42 km/l claim. Colour: green when easy on it, red when hard.
+      const pos = k => Math.max(0, Math.min(1, (k - 15) / 50)), moving = live && B.speed > 3, avg = mileAvg();
+      const f = moving ? Math.max(.02, pos(B.live)) : 0, col = mc(moving ? B.live : avg);
+      $("npArc").setAttribute("stroke-dasharray", `${f * 100} 101`); $("npArc").style.strokeOpacity = f > 0 ? 1 : 0; $("npArc").style.stroke = col; $("npNum").style.fill = col; $("npLeaf").style.color = col;
+      $("npAvg").style.transform = `rotate(${(pos(avg) - .5) * 180}deg)`; $("npClaim").style.transform = `rotate(${(pos(42) - .5) * 180}deg)`;
+      setNum($("npNum"), moving ? B.live : null);
+    } else if (show === "speed") { setNum($("npBig"), live ? B.speed : null); }
+    const navNear = live && P.nightTurns && st.nav && P.navOn && B.turnOn;
+    onEl("npNav", navNear && md === "ride");
+    if (navNear) { if ($("npArrow")._d !== B.navDir) { $("npArrow")._d = B.navDir; $("npArrow").innerHTML = ic(NAVIC[B.navDir]); } setNum($("npDist"), roundM(B.navM)); $("npTurn").classList.toggle("now", B.navM <= 120); }
+    // riding: a little more (range, trip, time)
+    if (md === "ride") { setNum($("riR"), ourRange()); setNum($("riK"), B.tripKm, nf(1));
+      setTxt($("riT"), new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).replace(/ ?[AP]M/, "")); }
+    // fast: nothing to read. Compass at the next turn + a meter that drains to zero at the turn; the screen edge glows your mileage colour.
+    if (md === "fast") {
+      $("npFglow").style.backgroundColor = mc(live && B.speed > 3 ? B.live : mileAvg());
+      $("npCmp").classList.toggle("on", !!navNear);
+      if (navNear) { $("cmpArr").style.transform = `rotate(${navAngle()}deg)`; 
+        setNum($("cmpDist"), roundM(B.navM)); $("npCmp").classList.toggle("now", B.navM <= 120); }
+    }
+    const conn = st.phase === "LIVE" ? "" : st.phase === "PROBLEM" ? "BIKE NOT CONNECTED" : "CONNECTING…";
+    onEl("npWarn", !!conn);
+    // parked (night): everything useful, as shapes + numbers (no labels to read)
+    if (stopped) {
+      const d = new Date(), t = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).split(" ");
+      const mins = Math.round(B.rideS / 60), avgSpd = B.rideS ? Math.round(B.tripKm / (B.rideS / 3600)) : 0;
+      const calls = released.filter(x => x.kind === "call"), msgs = released.filter(x => x.kind === "msg");
+      if (released.length) released.seen = true;
+      const svcLeft = st.service ? -42 : Math.round(nextService() - B.odo);
+      const segs = n => Array.from({ length: 10 }, (_, i) => `<i class="${i < Math.round(n / 10) ? "f" : ""}"></i>`).join("");
+      const who = list => esc(list.map(x => x.who).filter((v, i, a) => a.indexOf(v) === i).join(", "));
+      const chips = [ourRange() < 40 && "pump", B.mil && "engine", B.abs && "abs", conn && "btoff"].filter(Boolean);
+      const battF = Math.max(0, Math.min(1, (B.batt - 11.6) / 1.4));
+      // build the layout only when what's on it changes; every value then counts / glides to its new reading
+      const nav = st.nav && P.navOn, svc = svcLeft <= P.warn;
+      const sig = JSON.stringify([askVisible(), B.tripKm > 0, chips, who(calls), who(msgs), calls.length > 0, msgs.length > 0, nav && B.navDir, svc, svcLeft <= 0]);
+      const box = $("npStop");
+      if (box._sig !== sig) {
+        box._sig = sig;
+        box.innerHTML = `
+        <div class="np-time"><span id="nsT"></span><small id="nsAP"></small></div>
+        ${askVisible() ? `<div class="np-ask" id="nsAsk">${ic("pump")}<b>?</b><span>L · ₹ · full</span></div>` : ""}
+        ${chips.length ? `<div class="np-chips">${chips.map(c => ic(c)).join("")}</div>` : ""}
+        ${B.tripKm > 0 ? `<div class="np-tiles">
+          <div class="np-tile">${ic("road")}<span id="nsKm"></span><small>km</small></div>
+          <div class="np-tile">${ic("clock")}<span id="nsMin"></span><small id="nsMinU"></small></div>
+          <div class="np-tile">${ic("speedo")}<span id="nsSpd"></span><small>km/h</small></div>
+          <div class="np-tile">${ic("leaf")}<span id="nsKpl" class="kcol"></span><small>km/l</small></div>
+          <div class="np-tile">${ic("drop")}<span id="nsRs"></span><small id="nsL"></small></div>
+          <div class="np-tile">${ic("idle")}<span id="nsIdle"></span><small id="nsIdleU"></small></div></div>` : ""}
+        <div class="np-sep"></div>
+        <div class="np-row">${ic("pump")}<span class="np-seg" id="nsSeg">${"<i></i>".repeat(10)}</span><span id="nsRange"></span><small>km</small></div>
+        <div class="np-two">
+          <div class="np-row">${ic("thermo")}${barS("nsTempB", (105 - 40) / 80)}<span id="nsTemp"></span><small>°</small></div>
+          <div class="np-row"><svg class="ic" viewBox="0 0 24 24">${IC.battery}<rect id="nsBattR" x="4.5" y="9" height="6" rx="1" fill="currentColor" stroke="none" style="width:${W.nsBattR || 0}px;transition:width .9s"/></svg><span id="nsBatt"></span><small>V</small></div></div>
+        ${calls.length || msgs.length ? `<div class="np-sep"></div>
+          ${calls.length ? `<div class="np-row"><span class="np-badge">${ic("phone")}<b id="nsCalls"></b></span><span class="np-who">${who(calls)}</span></div>` : ""}
+          ${msgs.length ? `<div class="np-row"><span class="np-badge">${ic("chat")}<b id="nsMsgs"></b></span><span class="np-who">${who(msgs)}</span></div>` : ""}` : ""}
+        ${nav ? `<div class="np-row">${ic(NAVIC[B.navDir])}<span id="nsNav"></span><small id="nsNavU"></small></div>` : ""}
+        ${svc ? `<div class="np-row" style="${svcLeft <= 0 ? "color:var(--warnc)" : ""}">${ic("wrench")}${barS("nsSvcB")}<span id="nsSvc"></span><small>km${svcLeft <= 0 ? " over" : ""}</small></div>` : ""}`;
+        void box.offsetWidth;   // let the new bars start from their last width, then glide
+      }
+      setTxt($("nsT"), t[0]); setTxt($("nsAP"), t[1] || "");
+      if (B.tripKm > 0) {
+        setNum($("nsKm"), B.tripKm, nf(1));
+        if (mins >= 60) setNum($("nsMin"), mins, n => Math.floor(n / 60) + ":" + String(Math.round(n) % 60).padStart(2, "0"), "nsMin:h"); else setNum($("nsMin"), mins, nf(0), "nsMin:m");
+        setTxt($("nsMinU"), mins >= 60 ? "h" : "min");
+        setNum($("nsSpd"), avgSpd); setNum($("nsKpl"), B.kmpl || null, nf(1)); $("nsKpl").style.color = B.kmpl ? dimC(mileColor(B.kmpl, true)) : "";
+        setNum($("nsRs"), B.L * P.price, nf(0, "", "₹")); setNum($("nsL"), B.L, nf(2, " L"));
+        if (live && B.engine) { setNum($("nsIdle"), B.lph, nf(2), "nsIdle"); setTxt($("nsIdleU"), "L/h"); } else { setTxt($("nsIdle"), "off"); NUMS.nsIdle = null; setTxt($("nsIdleU"), ""); }
+      }
+      [...$("nsSeg").children].forEach((e, i) => e.classList.toggle("f", i < Math.round(B.tankL / P.tank * 10))); $("nsSeg").classList.toggle("low", ourRange() < 40);
+      setNum($("nsRange"), ourRange());
+      setW("nsTempB", (B.temp - 40) / 80); setNum($("nsTemp"), live ? B.temp : null);
+      W.nsBattR = 13 * battF; $("nsBattR").style.width = W.nsBattR + "px"; setNum($("nsBatt"), live ? B.batt : null, nf(1));
+      if (calls.length) setNum($("nsCalls"), calls.length); if (msgs.length) setNum($("nsMsgs"), msgs.length);
+      if (nav) {
+        if (B.navM >= 1000) setNum($("nsNav"), B.navM / 1000, nf(1), "nsNav:km"); else setNum($("nsNav"), B.navM, nf(0), "nsNav:m"); setTxt($("nsNavU"), B.navM >= 1000 ? "km" : "m"); }
+      if (svc) { setW("nsSvcB", svcLeft <= 0 ? 1 : 1 - svcLeft / P.interval); setNum($("nsSvc"), Math.abs(svcLeft)); }
+    }
+    if (performance.now() - (np._t0 ||= performance.now()) > 5000) onEl("npHint", false);
+  }
+  function wireNight() {
+    const np = $("np"); let y0 = null;
+    let t0 = null;   // the riding layer sits on top (faded out), so hit-test the question card by position
+    const onAsk = e => { const q = $("nsAsk"); if (!q) return false; const r = q.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; };
+    np.onpointerdown = e => { y0 = e.clientY; t0 = onAsk(e); np.setPointerCapture(e.pointerId); };
+    np.onpointerup = e => { const dy = y0 === null ? 0 : y0 - e.clientY; y0 = null;
+      if (Math.abs(dy) < 15 && t0) { revealUntil = Date.now() + 30000; st.revealAnim = true; evlog("Tapped the fuel question → dashboard for 30 s to answer"); showTab(0, true); return; }
+      if (dy > 60) { revealUntil = Date.now() + 10000; st.revealAnim = true; evlog("Swiped up: full dashboard for 10 s"); showTab(0, true); } };
+    renderNight(st.phase === "LIVE");
+  }
+
+  // ================= helmet sounds (intercom). In the app: TextToSpeech + short tones on the navigation audio stream, music ducks.
+  let AC = null;
+  const ac = () => { if (!AC) try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} if (AC && AC.state === "suspended") AC.resume(); return AC; };
+  document.addEventListener("pointerdown", () => ac());
+  // Sound pack (tools/make_sounds.py → tools/sounds/*.wav, the same files ship in the app).
+  // Sounds first. Voice only for emergencies by default ("Voice: Off / Emergencies / More" in Settings).
+  const SND = {};
+  const SND_NAMES = ["arrived", "connected", "disconnected", "fuel_low", "ind_forgot", "ind_tick_both", "ind_tick_left", "ind_tick_right", "ind_tock_both",
+    "ind_tock_left", "ind_tock_right", "message", "missed_call", "reroute", "roundabout", "service", "speed", "turn_now_left", "turn_now_right",
+    "turn_soon_left", "turn_soon_right", "turn_soon_straight", "urgent", "uturn", "warning"];
+  function loadSnd(n) {
+    const a = ac(); if (!a) return Promise.reject();
+    return SND[n] ||= fetch("sounds/" + n + ".wav").then(r => r.arrayBuffer()).then(b => a.decodeAudioData(b));
+  }
+  document.addEventListener("pointerdown", () => SND_NAMES.forEach(n => loadSnd(n).catch(() => {})), { once: true });
+  function play(n, when = 0) {
+    loadSnd(n).then(buf => { const a = ac(), src = a.createBufferSource(), g = a.createGain(); g.gain.value = 1.5;
+      src.buffer = buf; src.connect(g).connect(a.destination); src.start(a.currentTime + when); }).catch(() => {});
+  }
+  // Natural voice: fixed phrases are Kokoro-82M clips (tools/make_voice.py → tools/voice/<voice>/<phrase>.wav; the app ships one
+  // voice as ~108 KB of .ogg). Anything not in the list (caller names) falls back to the best offline TTS voice.
+  const VOICES = [["af_heart", "Heart", "US · female"], ["bf_emma", "Emma", "UK · female"], ["am_michael", "Michael", "US · male"], ["bm_george", "George", "UK · male"]];
+  const CLIP = { "side stand": "side_stand", "crash detected. hold the i button if you're ok": "crash", "sending sos in ten seconds": "crash_10",
+    "sos sent": "sos_sent", "okay. cancelled": "crash_ok", "bike down. hold the i button if you're ok": "bike_down", "fuel low": "fuel_low",
+    "bike lost": "bike_lost", "bike connected": "bike_connected", "indicator": "indicator", "check engine": "check_engine", "service due": "service_due",
+    "slow down": "slow_down", "left turn": "turn_left", "right turn": "turn_right", "keep straight": "keep_straight", "roundabout": "roundabout",
+    "u-turn": "uturn", "arrived": "arrived", "missed call": "missed_call", "message": "message" };
+  const VCL = {};
+  function loadClip(v, n) { const a = ac(); if (!a) return Promise.reject(); return VCL[v + "/" + n] ||= fetch(`voice/${v}/${n}.wav`).then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); }).then(b => a.decodeAudioData(b)); }
+  function playClip(n, delay = 0, v = P.voiceName) {
+    return loadClip(v, n).then(buf => { const a = ac(), src = a.createBufferSource(), g = a.createGain(); g.gain.value = 1.2;
+      src.buffer = buf; src.connect(g).connect(a.destination); src.start(a.currentTime + delay / 1000); return true; });
+  }
+  function say(text, delay = 0) {
+    if (!text) return;
+    const clip = CLIP[text.toLowerCase().replace(/[!.]+$/, "").trim()];
+    if (clip) { playClip(clip, delay).catch(() => tts(text, delay)); return; }
+    tts(text, delay);
+  }
+  function tts(text, delay = 0) {
+    if (!text || !window.speechSynthesis) return;
+    // pick the most natural voice installed (the app: pre-recorded neural clips for fixed phrases, and for names the phone's
+    // highest-quality offline voice, Voice.QUALITY_VERY_HIGH, Indian English first)
+    const pick = () => { const vs = speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang)); const score = v => (/natural|neural|premium|enhanced|siri/i.test(v.name) ? 10 : 0) +
+      (/en-IN/i.test(v.lang) ? 4 : /en-GB/i.test(v.lang) ? 2 : 0) + (/google/i.test(v.name) ? 3 : 0) + (/samantha|daniel|karen|moira|rishi|veena/i.test(v.name) ? 2 : 0) - (/compact|eloquence|novelty|bad|bells|wobble|bahh|good news|grandma|grandpa|rocko|zarvox|whisper|albert|fred|junior|ralph|trinoids|bubbles|boing|cellos|jester|organ|superstar/i.test(v.name) ? 20 : 0);
+      return vs.sort((a, b) => score(b) - score(a))[0]; };
+    setTimeout(() => { const u = new SpeechSynthesisUtterance(text); const v = pick(); if (v) { u.voice = v; u.lang = v.lang; } u.rate = 1.0; u.pitch = 1; speechSynthesis.speak(u); }, delay);
+  }
+  // cue(sound, words, emergency): the sound always plays; words only if Voice allows it.
+  function cue(snd, words = "", emergency = false, label = "") {
+    const v = P.voice, talk = words && (v === "more" || (v === "emergency" && emergency));
+    if (!st.intercom) { evlog(`(no headset) ${label || snd}`); return; }
+    evlog(`🔊 Helmet: ${label || snd}${talk ? ` + voice "${words}"` : ""}`);
+    play(snd); if (talk) say(words, 650);
+  }
+  const NAVSND = [["turn_soon_left", "turn_now_left"], ["turn_soon_right", "turn_now_right"], ["turn_soon_straight", null], ["roundabout", "roundabout"]];
+  const SOUND_DEMO = [
+    ["Indicator, left", [["ind_tick_left", 0], ["ind_tock_left", .36], ["ind_tick_left", .72], ["ind_tock_left", 1.08]]],
+    ["Indicator, right", [["ind_tick_right", 0], ["ind_tock_right", .36], ["ind_tick_right", .72], ["ind_tock_right", 1.08]]],
+    ["Hazard", [["ind_tick_both", 0], ["ind_tock_both", .36], ["ind_tick_both", .72], ["ind_tock_both", 1.08]]],
+    ["Indicator left on", [["ind_forgot", 0]]], ["Turn left soon", [["turn_soon_left", 0]]], ["Turn left now", [["turn_now_left", 0]]],
+    ["Turn right soon", [["turn_soon_right", 0]]], ["Turn right now", [["turn_now_right", 0]]], ["Keep straight", [["turn_soon_straight", 0]]],
+    ["Roundabout", [["roundabout", 0]]], ["U-turn", [["uturn", 0]]], ["Re-routing", [["reroute", 0]]], ["Arrived", [["arrived", 0]]],
+    ["Over the limit", [["speed", 0]]], ["Fuel low", [["fuel_low", 0]]], ["Warning lamp", [["warning", 0]]], ["Service due", [["service", 0]]],
+    ["Emergency", [["urgent", 0]]], ["Missed call", [["missed_call", 0]]], ["Message", [["message", 0]]],
+    ["Bike connected", [["connected", 0]]], ["Bike lost", [["disconnected", 0]]]];
+
+  // ================= calls and messages (held until slow)
+  function evlog(t) { const box = $("evlog"); const d = document.createElement("div"); d.textContent = new Date().toTimeString().slice(0, 8) + "  " + t; box.prepend(d); }
+  function incoming(kind, who) {
+    const live = st.phase === "LIVE", v = live ? B.speed : 0, it = { kind, who };
+    if (P.holdAlerts && v >= P.slowKmh) { held.push(it); evlog(`Held ${kind === "call" ? "call from " + who : "WhatsApp from " + who} at ${v} km/h (nothing shown, helmet still rings for calls)`); }
+    else deliver([it]);
+  }
+  function deliver(items) {
+    items.forEach(it => {
+      if (it.kind === "call") B.missed++; else B.unread++;
+      evlog(`Bike display: ${it.kind === "call" ? "CALL " + it.who.toUpperCase() : "SMS " + it.who.toUpperCase()} (clears by itself)`);
+    });
+    released = released.concat(items);
+    if (!nightActive() || revealing()) { if ($("mc")) { setNum($("mc"), B.missed); setNum($("um"), B.unread); } }
+  }
+
+  // ================= TRIPS
+  const now = Date.now(), H = 3600e3;
+  let trips = [
+    { id: "t4", start: now - 26 * H, mins: 74, km: 42.3, movingS: 3900, top: 96, breaks: 1, kmpl: 38.2, demo: 74 },
+    { id: "t3", start: now - 50 * H, mins: 23, km: 9.8, movingS: 1200, top: 61, breaks: 0, kmpl: 41.5, demo: 23 },
+    { id: "t2", start: now - 5 * 24 * H, mins: 312, km: 186.4, movingS: 15800, top: 112, breaks: 3, kmpl: 36.9, demo: 312 },
+    { id: "t1", start: now - 9 * 24 * H, mins: 12, km: 4.1, movingS: 640, top: 48, breaks: 0, kmpl: 43.0, demo: 12 },
+  ];
+  let confirmDel = null;
+  const fmtDate = t => { const d = new Date(t); return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }).replace(",", "") + ", " + d.toTimeString().slice(0, 5); };
+  function tripCard(t) {
+    const avg = t.movingS > 0 ? t.km / (t.movingS / 3600) : 0, L = t.km / t.kmpl;
+    return `<div class="panel trip" data-id="${t.id}"><div class="body" data-act="map">
+      <div class="labelLarge muted">${fmtDate(t.start)}</div>
+      <div class="headlineSmall">${t.km.toFixed(1)} km</div>
+      <div class="bodyMedium">${Math.floor(t.mins / 60)}h ${t.mins % 60}m  ·  avg ${Math.round(avg)}  ·  top ${t.top} km/h${t.breaks ? `  ·  ${t.breaks} break${t.breaks > 1 ? "s" : ""}` : ""}</div>
+      <div class="bodyMedium prim" style="font-weight:500">Est. ${t.kmpl.toFixed(1)} km/l  ·  ${L.toFixed(2)} L  ·  ₹${Math.round(L * P.price)}</div></div>
+      <div class="btns"><button class="btn text" data-act="map">Map</button><button class="btn text" data-act="share">Share</button>
+        <button class="btn text" data-act="del">${confirmDel === t.id ? "Tap again to delete" : "Delete"}</button></div></div>`;
+  }
+  function tripsHTML() {
+    return `<div class="content"><div class="headlineMedium" style="padding-top:0">Trips</div>
+      <div class="appear" id="liveTrip"><div><div class="panel"><div style="display:flex;align-items:center"><div style="flex:1">
+        <div class="labelLarge prim" id="ltState">Riding now</div><div class="titleLarge"><span id="ltKm"></span>  ·  <span id="ltKpl" class="kcol"></span></div></div>
+        <button class="btn text" id="endRide">End ride</button></div></div></div></div>
+      <div id="tripList">${trips.length ? trips.map(tripCard).join("") : `<div class="muted bodyMedium">Your rides appear here automatically.</div>`}</div><div style="height:4px"></div></div>`;
+  }
+  function renderLiveTrip() {
+    if (!$("liveTrip")) return;
+    $("liveTrip").classList.toggle("on", B.tripKm > 0);
+    const brk = Math.floor(B.stopS / 60);
+    setTxt($("ltState"), brk >= 3 ? `On a break · ${brk} min` : B.stopS > 0 ? "Riding now · stopped" : "Riding now");
+    setNum($("ltKm"), B.tripKm, nf(1, " km")); setNum($("ltKpl"), B.kmpl || null, nf(1, " km/l")); $("ltKpl").style.color = B.kmpl ? mileColor(B.kmpl) : "";
+  }
+  function wireTrips() {
+    $("tripList").style.cssText = "display:flex;flex-direction:column;gap:12px";
+    $("endRide").onclick = () => {
+      if (B.tripKm <= 0) return;
+      const mins = Math.max(1, Math.round(B.tripKm / 40 * 60));
+      trips.unshift({ id: "t" + Date.now(), start: Date.now() - mins * 60e3, mins, km: B.tripKm, movingS: mins * 55, top: B.top, breaks: 0, kmpl: B.kmpl || 40, demo: mins });
+      B.tripKm = 0; B.stopS = 0; B.L = 0; B.rideS = 0; B.kmpl = 0; toast("Ride saved"); showTab(1, true);
+    };
+    $("tripList").onclick = e => {
+      const b = e.target.closest("[data-act]"), card = e.target.closest(".trip"); if (!b || !card) return;
+      const t = trips.find(x => x.id === card.dataset.id);
+      if (b.dataset.act === "map") openTrip(t, false);
+      else if (b.dataset.act === "share") openTrip(t, true);
+      else if (b.dataset.act === "del") {
+        if (confirmDel !== t.id) { confirmDel = t.id; b.textContent = "Tap again to delete"; return; }
+        confirmDel = null; card.classList.add("gone");
+        setTimeout(() => { trips = trips.filter(x => x !== t); card.remove(); if (!trips.length) $("tripList").innerHTML = `<div class="muted bodyMedium">Your rides appear here automatically.</div>`; }, 300);
+      }
+    };
+    renderLiveTrip();
+  }
+  function openTrip(t, share) {
+    closeOverlay(true);
+    const ov = document.createElement("div"); ov.className = "ov trip"; ov.id = "ovTrip";
+    const q = new URLSearchParams({ demo: t.demo, dark: $("phone").classList.contains("dark") ? "1" : "0", accent: ACCENTS[P.accent][1], share: share ? "1" : "0" });
+    ov.innerHTML = `<iframe src="../android/app/src/main/assets/trip.html?${q}" title="Trip map"></iframe>`;
+    $("phone").appendChild(ov);
+  }
+
+  // ================= TEST & LOG
+  const SHOWN = ["Showed correctly", "Something else", "Nothing"], YN = ["Yes", "No"];
+  const STEPS = [
+    ["Connect", "Close TVS Connect (Force stop). Ignition ON. Wait until the Ride tab says Connected.", ["Connected", "Won't connect"]],
+    ["Hands off", "Don't touch anything for 20 seconds. Watch the bike and the phone.\n\nDid an assistant start by itself?", YN, 20],
+    ["Customer window", "Is the bike showing the customer window (phone signal + battery + call/SMS counts)?", YN],
+    ["Long press I", "On the customer window, HOLD the I button for 3 seconds.\n\nDid the assistant open on your phone?", YN, 8],
+    ["Long press I again", "Wait for it to close. HOLD I for 3 seconds again.\n\nDid it open?", YN, 8],
+    ["Short press I", "Press I once, quickly.\n\nDid anything happen?", YN, 8],
+    ["Mode button", "Press the Mode button once (Urban → Rain), then back.", ["Done"]],
+    ["Greeting", "Tap Send, then look at the cluster. Expected: Hi RONIN", SHOWN, 0, "name"],
+    ["Caller", "Tap Send. Expected: incoming caller TEST CALLER", SHOWN, 0, "caller"],
+    ["SMS", "Tap Send. Expected: SMS from TESTSMS", SHOWN, 0, "sms"],
+    ["Text", "Tap Send. Expected: HELLO RONIN", SHOWN, 0, "text"],
+    ["Counts", "Tap Send. Expected: 3 missed calls, 2 SMS (the app replaces these with real counts 2 s later)", SHOWN, 0, "status-test"],
+    ["Nav: turn ahead", "Tap Send. Expected: an arrow and 200 m", SHOWN, 0, "nav"],
+    ["Nav: left now", "Tap Send. Expected: left arrow, 50 m", SHOWN, 0, "nav"],
+    ["Nav: right now", "Tap Send. Expected: right arrow, 50 m", SHOWN, 0, "nav"],
+    ["Nav: U-turn", "Tap Send. Expected: U-turn symbol", SHOWN, 0, "nav"],
+    ["Nav: arrived", "Tap Send. Expected: arrived / flag", SHOWN, 0, "nav"],
+    ["Google Maps", "Start Google Maps navigation to any place nearby (no need to ride). Watch the cluster for 20 s.\n\nDid turns show on the bike?", ["Yes", "No", "Skip"], 20],
+    ["Call: answer", "Only if someone can call you. When the caller shows on the bike, HOLD I for 3 s.\n\nWas it answered?", ["Yes", "No", "Skip"]],
+    ["Call: reject", "Only if someone can call. When the caller shows, press I once.\n\nWas it rejected?", ["Yes", "No", "Skip"]],
+    ["Finished", "Ignition OFF. At home, plug the phone into the Mac and tell Claude: everything is in the log file.", ["Finish"]],
+  ];
+  let step = 0, left = 0, cdTimer = 0, note = "";
+  const LOG = [];
+  const stamp = () => { const d = new Date(); return d.toTimeString().slice(0, 8) + "." + String(d.getMilliseconds()).padStart(3, "0"); };
+  function log(line) { LOG.push(stamp() + " " + line); if (LOG.length > 300) LOG.shift(); const box = $("logBox"); if (box) { const d = document.createElement("div"); d.textContent = LOG[LOG.length - 1]; d.className = cls(line); box.prepend(d); } }
+  const cls = l => /\[test\]|\[button\]/.test(l) ? "prim" : "";
+  const hex20 = () => Array.from({ length: 20 }, () => Math.floor(Math.random() * 256).toString(16).padStart(2, "0")).join(" ");
+  ["Service started", "Connecting to TVS22XXXXXXXX (XX:XX:XX:XX:XX:XX)", "Connected, reading bike…", "Notifications on 0x5354", "Connected to TVS22XXXXXXXX",
+    "← 0x01 " + hex20(), "[button] I long press → assistant (cooldown 10 s)", "→ status calls=2 sms=3 batt=78"].forEach(log);
+  function stepHTML() {
+    const s = STEPS[step];
+    return `<div class="panel">
+      <div class="labelLarge prim">Step ${step + 1} of ${STEPS.length}</div>
+      <div class="headlineSmall">${esc(s[0])}</div>
+      <div class="bodyLarge" style="padding:8px 0;white-space:pre-line">${esc(s[1])}</div>
+      <div class="count" id="cd" style="display:${left > 0 ? "block" : "none"}">${left}s</div>
+      ${s[4] ? `<button class="btn big" id="sendBtn" style="width:100%;margin-bottom:8px">Send to bike</button>` : ""}
+      <div class="tf"><input id="noteIn" value="${esc(note)}"><label>Note (optional)</label></div>
+      <div class="flow" style="padding-top:8px">${s[2].map(a => `<button class="btn tonal big" data-ans="${esc(a)}" ${left > 0 ? "disabled" : ""}>${esc(a)}</button>`).join("")}</div>
+      <div style="display:flex;margin:6px -12px -8px"><button class="btn text" id="stBack" ${step ? "" : "disabled"}>← Back</button><button class="btn text" id="stRestart">Start over</button></div>
+    </div>`;
+  }
+  function testHTML() {
+    return `<div class="content" style="height:100%;box-sizing:border-box">${connHTML()}
+      <div class="stepwrap" id="stepWrap">${stepHTML()}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn outlined" id="markBtn">Mark now</button><button class="btn outlined" id="clearBtn">Clear bike text</button><button class="btn outlined" id="vaBtn">Assistant</button></div>
+      <div class="bodySmall muted">Log file: Android/data/dev.ronindash/files/log-${new Date().toISOString().slice(0, 10)}.txt</div>
+      <div class="log" id="logBox">${LOG.slice().reverse().map(l => `<div class="${cls(l)}">${esc(l)}</div>`).join("")}</div></div>`;
+  }
+  function goStep(n) {
+    const dir = n >= step ? 1 : -1; step = Math.max(0, Math.min(STEPS.length - 1, n));
+    left = STEPS[step][3] || 0; clearInterval(cdTimer);
+    const w = $("stepWrap"); if (!w) return;
+    const oldP = w.firstElementChild; const tmp = document.createElement("div"); tmp.innerHTML = stepHTML(); const np = tmp.firstElementChild;
+    oldP.style.cssText = "position:absolute;left:0;right:0;top:0"; w.appendChild(np);
+    oldP.animate([{ transform: "none", opacity: 1 }, { transform: `translateX(${-100 * dir}%)`, opacity: 0 }], { duration: 300, easing: "ease-in", fill: "forwards" }).onfinish = () => oldP.remove();
+    np.animate([{ transform: `translateX(${100 * dir}%)`, opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 320, easing: "ease-out" });
+    wireStep(); startCountdown();
+  }
+  function startCountdown() {
+    if (left <= 0) return;
+    cdTimer = setInterval(() => {
+      left--; const cd = $("cd"); if (cd) { cd.textContent = left + "s"; cd.style.display = left > 0 ? "block" : "none"; }
+      if (left <= 0) { clearInterval(cdTimer); document.querySelectorAll("[data-ans]").forEach(b => b.disabled = false); }
+    }, 1000);
+  }
+  function wireStep() {
+    const s = STEPS[step];
+    $("noteIn").oninput = e => note = e.target.value;
+    document.querySelectorAll("[data-ans]").forEach(b => b.onclick = () => { log(`[test] ${step + 1}. ${s[0]} → ${b.dataset.ans}` + (note.trim() ? ` (${note.trim()})` : "")); note = ""; if (step < STEPS.length - 1) goStep(step + 1); });
+    if ($("sendBtn")) $("sendBtn").onclick = () => { log(`[test] SEND ${s[0]}`); if (st.phase === "LIVE") log(`→ ${s[4]} ${hex20()}`); else log(`Not connected, can't send ${s[4]}`); };
+    $("stBack").onclick = () => goStep(step - 1);
+    $("stRestart").onclick = () => { log("[test] restarted"); goStep(0); };
+  }
+  function wireTest() {
+    wireStep(); startCountdown(); renderConn();
+    $("markBtn").onclick = () => { log("[mark] " + (note.trim() || "mark")); note = ""; if ($("noteIn")) $("noteIn").value = ""; };
+    $("clearBtn").onclick = () => log(st.phase === "LIVE" ? "→ clear " + hex20() : "Not connected, can't send clear");
+    $("vaBtn").onclick = () => { log("Assistant launched (VA 32 'Listening' for 3 s)"); toast("🎙 Assistant opened"); };
+  }
+
+  // ================= SETTINGS
+  const sw = (k, on) => `<button class="m3sw ${on ? "on" : ""}" data-sw="${k}" aria-label="${k}"></button>`;
+  const item = (title, sub, trailing = "", attrs = "") => `<div class="item ${attrs ? "click" : ""}" ${attrs}><div class="t"><div class="bodyLarge">${title}</div>${sub ? `<div class="bodySmall muted">${sub}</div>` : ""}</div>${trailing}</div>`;
+  const swItem = (k, title, sub) => item(title, sub, sw(k, P[k]), `data-swrow="${k}"`);
+  const sect = (title, body) => `<div class="sect"><div class="h">${title.toUpperCase()}</div><div class="box">${body}</div></div>`;
+  const tf = (k, label, sup = "", type = "text") => `<div class="tf"><input data-tf="${k}" value="${esc(P[k])}" inputmode="${type}"><label>${label}</label>${sup ? `<div class="sup">${sup}</div>` : ""}</div>`;
+  const D = `<div class="div"></div>`;
+  const perm = (n, why, on) => item(n, why, on ? `<span class="prim" style="font-weight:500">On</span>` : `<button class="btn outlined" data-allow>Allow</button>`);
+  function serviceLine() {
+    const next = nextService(), l = st.service ? -42 : Math.round(next - B.odo);
+    return [l <= 0 ? "Service overdue" : `Next service in ${l} km`, `Due at ${next} km · odometer now ${Math.round(B.odo)} km`];
+  }
+  const VC_HINT = { off: "Sounds only, never a voice.", emergency: "A few words only when it matters: side stand down while moving, crash detected. Everything else is a sound.",
+    more: "Also a word or two after the sound: \"Slow down\", \"Fuel low\", who called. Never full sentences." };
+  function settingsHTML() {
+    const themes = [["system", "System"], ["light", "Light"], ["dark", "Dark"]], ti = themes.findIndex(t => t[0] === P.theme);
+    const sv = serviceLine();
+    return `<div class="content" style="gap:20px">
+      <div><div class="headlineMedium" style="font-weight:600">Settings</div><div style="height:4px"></div>${connHTML()}</div>
+      ${sect("Appearance", `<div class="bodyLarge" style="padding:12px 0 8px">Theme</div>
+        <div class="seg3" id="themeSeg"><span class="th" style="width:calc((100% - 6px)/3);transform:translateX(${ti * 100}%)"></span>${themes.map(([k, n], i) => `<button data-theme="${k}" class="${i === ti ? "on" : ""}">${n}</button>`).join("")}</div>
+        <div class="bodyLarge" style="padding:16px 0 8px">Accent colour</div>
+        <div class="dots">${ACCENTS.map(([n, c], i) => `<button data-acc="${i}" class="${i === P.accent ? "on" : ""}" style="background:${c}" title="${n}">${i === P.accent ? "✓" : ""}</button>`).join("")}</div>
+        ${D}${swItem("keepScreenOn", "Keep screen on", "While the app is open")}`)}
+      ${sect("Riding screens", `${sliderRow("fastKmh", "Fast mode from")}
+        <div class="hint">The screen changes by itself, nothing to tap. Parked (stopped with the side stand down): everything. Riding: live mileage, the next turn, range, trip and time. Fast (above this speed for 3 s; back below it 15 km/h lower): only a compass pointing at your next turn with the metres left counting down under it, and the bottom of the screen glowing in your mileage colour. Turns show up about 35 s before you reach them (up to 1 km at 100 km/h, ~300 m at 30). Side stand down while moving is never 'parked': it sounds the alarm. Each screen has a day and a night version.</div>`)}
+      ${sect("Screen and battery", `${swItem("autoOpen", "Open the dashboard when the bike turns on", "Only if the phone is on the mount, not in a pocket")}${D}
+        ${swItem("fightSun", "Fight direct sunlight", "Full brightness when the sun hits the screen. Phones get hot and can switch off.")}${D}
+        ${swItem("agentBright", "Assistants can change the bike display brightness", "Gemini, Google Assistant or an automation app can make the bike display brighter or dimmer when you ask. That's all they can do: no messages, calls, trips or settings.")}${D}
+        ${swItem("clusterBright", "Bike display follows the light", "Dims the bike's display at night and brightens it in the sun, from the phone's light sensor. Only while the phone is on the mount facing the sky. If you change it on the bike, it stays your way for that ride.")}
+        <div class="hint">Off (recommended): with the sun straight on the screen nobody can read it, so the screen rests (black, lowest brightness) and comes back in the shade. Sounds and the bike display keep working. If the phone gets hot the screen always rests and GPS slows down until it cools. Nothing of Ronin Dash runs while the bike is off.</div>`)}
+      ${sect("Night panel", `<div class="bodyLarge" style="padding:12px 0 8px">Turn on</div>
+        <div class="seg3" id="npSeg">${(() => { const o = [["off", "Off"], ["night", "At night"], ["always", "Always"]], i = o.findIndex(x => x[0] === P.night);
+          return `<span class="th" style="width:calc((100% - 6px)/3);transform:translateX(${i * 100}%)"></span>` + o.map(([k, n]) => `<button data-np="${k}" class="${k === P.night ? "on" : ""}">${n}</button>`).join(""); })()}</div>
+        <div class="expand ${P.night !== "off" ? "on" : ""}" id="npX"><div>
+          <div class="bodyLarge" style="padding:16px 0 8px">Glow colour</div>
+          <div class="dots">${GLOWS.map(([k, c]) => { const col = k === "accent" ? ACCENTS[P.accent][1] : c;
+            return `<button data-glow="${k}" class="${P.nightGlow === k ? "on" : ""}" title="${k}" style="background:${col}">${P.nightGlow === k ? "✓" : ""}</button>`; }).join("")}</div>
+          ${D}${sliderRow("nightBright", "Brightness")}
+          ${D}<div class="bodyLarge" style="padding:12px 0 8px">While riding, show</div>
+          <div class="seg3" id="nsSeg">${(() => { const o = [["mileage", "Live mileage"], ["speed", "Speed"], ["nothing", "Nothing"]], i = o.findIndex(x => x[0] === P.nightShow);
+            return `<span class="th" style="width:calc((100% - 6px)/3);transform:translateX(${i * 100}%)"></span>` + o.map(([k, n]) => `<button data-ns="${k}" class="${k === P.nightShow ? "on" : ""}">${n}</button>`).join(""); })()}</div>
+          <div style="height:8px"></div>${D}${swItem("nightTurns", "Next turn on the riding screens", "About 35 s before it")}
+          <div class="hint">Pure black while you ride: no speed, gear or RPM (the bike shows those). Only emergencies flash. Stop for 3 s and everything fades in: time, trip, mileage, fuel, range, missed calls and messages, next turn. Swipe up to see the full dashboard for 10 s. "At night" follows sunset and sunrise where you are.</div>
+        </div></div>`)}
+      ${sect("Sounds in your helmet", `<div class="hint" style="padding:10px 0 0">Short sounds instead of sentences, through your intercom. Turn and indicator sounds play in the ear on that side. Music lowers for a moment.</div>
+        ${swItem("sndInd", "Indicator", "Tick-tock in that ear, and a nudge if you leave it on")}${D}
+        ${swItem("sndTurns", "Turn tones", "Two notes 300 m before, three at the turn, in the ear you turn to. They play alongside Google Maps' voice.")}${D}
+        ${swItem("sayTurns", "Say the turns too", "Off: Google Maps already speaks directions, with street names and landmarks. Turn this on only if you mute Google's voice.")}${D}
+        ${swItem("sndSpeed", "Speed alert", "Two pings when you go over the limit")}${D}
+        ${swItem("sndWarn", "Warnings", "Fuel low, warning lamp, bike lost. Side stand down while moving is an alarm")}${D}
+        ${swItem("sndMissed", "Missed calls and messages", "A ring-chirp or a pop for each, once you slow down")}${D}
+        <div class="bodyLarge" style="padding:12px 0 8px">Voice</div>
+        <div class="seg3" id="vcSeg">${(() => { const o = [["off", "Off"], ["emergency", "Emergencies"], ["more", "More"]], i = o.findIndex(x => x[0] === P.voice);
+          return `<span class="th" style="width:calc((100% - 6px)/3);transform:translateX(${i * 100}%)"></span>` + o.map(([k, n]) => `<button data-vc="${k}" class="${k === P.voice ? "on" : ""}">${n}</button>`).join(""); })()}</div>
+        <div class="hint" id="vcHint">${VC_HINT[P.voice]}</div>
+        <div class="bodyLarge" style="padding:14px 0 8px">Whose voice</div>
+        <div class="vpick">${VOICES.map(([k, n, d]) => `<button class="vp${k === P.voiceName ? " on" : ""}" data-vn="${k}"><b>${n}</b><span>${d}</span></button>`).join("")}</div>
+        <div class="hint">Tap to hear it. Recorded once from a natural neural voice, so it sounds the same every time and works with no internet.</div>
+        ${D}<div class="bodyLarge" style="padding:12px 0 8px">Hear the sounds</div>
+        <div class="sndgrid">${SOUND_DEMO.map(([n], i) => `<button class="sndchip" data-snd="${i}"><span>▶</span>${n}</button>`).join("")}</div>`)}
+      ${sect("Calls and messages while riding", `${swItem("holdAlerts", "Hold them until I slow down", "Nothing pops up on the phone or the bike display above the slow speed. Calls still ring in your helmet.")}
+        <div class="expand ${P.holdAlerts ? "on" : ""}" id="holdX"><div>${D}${sliderRow("slowKmh", "Slow speed")}<div class="hint">They show up as soon as you drop below this speed.</div></div></div>`)}
+      ${sect("Bike", `<div class="radio on" style="padding:4px 0"><i></i><div><div class="bodyLarge">TVS22XXXXXXXX</div><div class="bodySmall muted">XX:XX:XX:XX:XX:XX</div></div></div>
+        ${D}${item("Connection", "Connects by itself when the bike turns on. Nothing runs while it's off.")}
+        ${D}${item("Pair a new bike", "Close TVS Connect. On the bike: long-press Mode → CLOCK SETTING → press Mode once. Then search and type the code shown on the bike.", `<button class="btn outlined" id="scanBtn">Search</button>`)}
+        <div id="scanRes"></div>`)}
+      ${sect("Speed alert", `${swItem("speedAlert", "Warn me above a speed")}
+        <div class="expand ${P.speedAlert ? "on" : ""}" id="spdX"><div>${D}
+          ${sliderRow("limit", "Limit")}
+          ${D}${swItem("beep", "Vibrate the phone too")}${D}${swItem("clusterOverspeed", "Use the bike's own overspeed warning", "Sends this limit to the cluster")}
+          <div class="hint">Alerts after 3 s above the limit, at most every 30 s.</div></div></div>`)}
+      ${sect("Service reminder", `<div id="svcItem">${item(sv[0], sv[1])}</div>${D}
+        <div class="tfrow">${tf("interval", "Every (km)", "", "numeric")}${tf("warn", "Warn before (km)", "", "numeric")}</div>
+        ${tf("lastSvc", "Last service at (km)", `Leave empty to follow every ${P.interval} km on the odometer`, "numeric")}
+        <button class="btn text" id="svcNow" style="margin:4px -12px 4px">I just got it serviced</button>`)}
+      ${sect("Crash detection and SOS", `${swItem("crashDetect", "Detect crashes", "Hard impact while moving, then the bike stops, or the engine cuts out at speed")}${D}
+        <div class="bodyLarge" style="padding-top:12px">Emergency contacts</div><div id="contacts"></div>
+        <div style="display:flex;gap:8px;align-items:center;padding:0 0 8px"><div class="tf"><input id="phoneIn" inputmode="tel"><label>Phone number</label></div><button class="btn outlined" id="addC" style="margin-top:12px">Add</button></div>
+        <button class="btn text" id="pickC" style="margin:0 -12px">Pick from contacts</button>${D}
+        ${swItem("sosCall", "Also call the first contact")}${D}
+        <div id="testRow">${item("Test the alert", "Runs the real 30 s countdown", `<button class="btn outlined" id="testBtn">Test</button>`)}</div>
+        <div class="hint">When triggered: 30 s alarm and an "I'M OK" screen. Any bike button also cancels. Otherwise your contacts get an SMS with a map link to your location.</div>`)}
+      ${sect("On the bike display", `${tf("riderName", "Greeting name", 'Shown as "Hi NAME". The cluster drops spaces.')}
+        ${swItem("calls", "Caller name")}${D}${swItem("sms", "SMS")}${D}${swItem("whatsapp", "WhatsApp")}${D}${swItem("navOn", "Google Maps turns")}`)}
+      ${sect("I button", `<div class="bodyLarge" style="padding-top:12px">Hold 2–3 seconds, then let go</div>
+        ${[["default", "Phone's assistant (Google Assistant or Gemini)"], ["gemini", "Gemini app"], ["none", "Nothing"]].map(([k, n]) => `<div class="radio ${P.assist === k ? "on" : ""}" data-assist="${k}"><i></i><span class="bodyMedium">${n}</span></div>`).join("")}
+        ${D}${swItem("vaFeedback", 'Show "Listening" on the bike')}<div class="hint">The bike only sends a hold of 2–3 seconds, counted when you let go; quicker taps or longer holds do nothing. During a call: a tap rejects; hold about 2½ seconds and let go to answer. Holding much longer does nothing. Nothing starts on its own when you connect.</div>`)}
+      ${sect("Trips and fuel", `${swItem("tripRecord", "Record trips automatically")}${D}
+        <div class="tfrow">${tf("price", "Petrol ₹/L", "", "numeric")}${tf("tank", "Tank (L)", "", "numeric")}</div>
+        <div class="hint">Mileage is worked out from fuel burned: RPM × how much throttle you give (so revving or a fist of throttle in top gear shows straight away). Distance comes from GPS; in tunnels the bike's speed is used, corrected for your speedometer (reads ${((B.speedoK - 1) * 100).toFixed(1)} % high, learned). When you stop at a fuel station the app asks what you filled (full tank, litres or ₹) and corrects itself for your bike: ×${P.fuelCal.toFixed(3)} after ${P.fulls} full tanks. Range = petrol left (${B.tankL.toFixed(1)} L) × how you've been riding lately (${mileAvg().toFixed(1)} km/l over the last ~50 km; TVS claims 42). The bike's own range is never used.</div>`)}
+      ${sect("Permissions", [perm("Notifications", "Service reminders only", true), perm("Location", "Trips and the location in SOS messages", true),
+        perm("Calls and contacts", "Caller name, answer/reject with I, missed calls", true), perm("SMS and calls for SOS", "Sends the emergency message", false),
+        perm("Notification access", "SMS, WhatsApp and Google Maps turns", true), perm("Display over other apps", "Opens the assistant and crash alert from the pocket", false),
+        perm("No battery limits", "Lets Android wake the app when the bike turns on", true), item("Xiaomi / Redmi", "App info → Autostart on, Battery saver → No restrictions", `<span class="prim">Open</span>`)].join(D))}
+      ${sect("App", `${swItem("fileLog", "Keep a log file", "For testing and bug reports")}${D}
+        ${item("Version", "Ronin Dash 0.4 · unofficial, not affiliated with TVS Motor")}<div class="hint">Don't use the phone while riding.</div>`)}
+      <div style="height:8px"></div></div>`;
+  }
+  function renderContacts() {
+    $("contacts").innerHTML = (P.contacts.length ? "" : `<div class="bodySmall err">None yet. Add at least one.</div>`) +
+      P.contacts.map((n, i) => `<div style="display:flex;align-items:center"><span class="bodyMedium" style="flex:1">${esc(n)}</span><button class="btn text" data-rm="${i}">Remove</button></div>`).join("");
+  }
+  const sliderRow = (k, label) => `<div style="display:flex;align-items:center;padding-top:12px"><div class="bodyLarge" style="flex:1">${label}</div><div class="titleMedium prim" id="v_${k}"></div></div>
+    <div class="slider" data-sl="${k}"><div class="tr"></div><div class="fi"></div><div class="tk"></div></div>`;
+  function placeSlider(el) {
+    const k = el.dataset.sl, [mn, mx, , unit] = SLIDERS[k], f = (P[k] - mn) / (mx - mn);
+    el.querySelector(".fi").style.width = f * 100 + "%"; el.querySelector(".tk").style.left = f * 100 + "%"; $("v_" + k).textContent = P[k] + unit;
+  }
+  function wireSettings() {
+    renderConn(); renderContacts();
+    document.querySelectorAll("[data-sl]").forEach(el => {
+      const k = el.dataset.sl, [mn, mx, step] = SLIDERS[k];
+      placeSlider(el);
+      const setFrom = ev => { const r = el.getBoundingClientRect(); P[k] = mn + Math.round(Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * (mx - mn) / step) * step; placeSlider(el); };
+      el.onpointerdown = ev => { el.setPointerCapture(ev.pointerId); setFrom(ev); }; el.onpointermove = ev => { if (el.hasPointerCapture(ev.pointerId)) setFrom(ev); };
+    });
+    const scr = $("screen");
+    scr.onclick = e => {
+      const t = e.target;
+      const row = t.closest("[data-swrow]"); if (row) { const k = row.dataset.swrow; P[k] = !P[k]; row.querySelector(".m3sw").classList.toggle("on", P[k]); onPref(k); return; }
+      const th = t.closest("[data-theme]"); if (th) { setTheme(th.dataset.theme); return; }
+      const nb = t.closest("[data-np]"); if (nb) { P.night = nb.dataset.np; const seg = $("npSeg"), i = ["off", "night", "always"].indexOf(P.night);
+        seg.querySelector(".th").style.transform = `translateX(${i * 100}%)`; seg.querySelectorAll("button").forEach(b => b.classList.toggle("on", b === nb));
+        $("npX").classList.toggle("on", P.night !== "off"); applyMode(); evlog(`Night panel: ${nb.textContent}` + (P.night === "night" ? ` (it's ${st.time} in the mock)` : "")); return; }
+      const ns = t.closest("[data-ns]"); if (ns) { P.nightShow = ns.dataset.ns; const seg = $("nsSeg"), i = ["mileage", "speed", "nothing"].indexOf(P.nightShow);
+        seg.querySelector(".th").style.transform = `translateX(${i * 100}%)`; seg.querySelectorAll("button").forEach(b => b.classList.toggle("on", b === ns)); return; }
+      const vc = t.closest("[data-vc]"); if (vc) { P.voice = vc.dataset.vc; const seg = $("vcSeg"), i = ["off", "emergency", "more"].indexOf(P.voice);
+        seg.querySelector(".th").style.transform = `translateX(${i * 100}%)`; seg.querySelectorAll("button").forEach(b => b.classList.toggle("on", b === vc)); $("vcHint").textContent = VC_HINT[P.voice]; return; }
+      const vn = t.closest("[data-vn]"); if (vn) { P.voiceName = vn.dataset.vn; document.querySelectorAll("[data-vn]").forEach(b => b.classList.toggle("on", b === vn));
+        playClip("side_stand", 0).then(() => playClip("fuel_low", 1100)).then(() => playClip("turn_left", 2000)).catch(() => {}); return; }
+      const sc = t.closest("[data-snd]"); if (sc) { const [, seq] = SOUND_DEMO[+sc.dataset.snd]; seq.forEach(([n, w]) => play(n, w));
+        sc.classList.remove("playing"); void sc.offsetWidth; sc.classList.add("playing"); return; }
+      const gl = t.closest("[data-glow]"); if (gl) { P.nightGlow = gl.dataset.glow; document.querySelectorAll("[data-glow]").forEach(b => { b.classList.toggle("on", b === gl); b.textContent = b === gl ? "✓" : ""; }); return; }
+      const ac = t.closest("[data-acc]"); if (ac) { setAccent(+ac.dataset.acc); return; }
+      const as = t.closest("[data-assist]"); if (as) { P.assist = as.dataset.assist; document.querySelectorAll("[data-assist]").forEach(x => x.classList.toggle("on", x === as)); return; }
+      const rm = t.closest("[data-rm]"); if (rm) { P.contacts.splice(+rm.dataset.rm, 1); renderContacts(); return; }
+      if (t.closest("[data-allow]")) { const b = t.closest("[data-allow]"); b.outerHTML = `<span class="prim" style="font-weight:500">On</span>`; return; }
+    };
+
+    $("scanBtn").onclick = () => {
+      const b = $("scanBtn");
+      if (b.textContent === "Search") { b.textContent = "Stop"; $("scanRes").innerHTML = ""; setTimeout(() => { if (b.textContent === "Stop") $("scanRes").innerHTML = `<div class="div"></div>${item("TVS22XXXXXXXX", "Already paired · nothing new nearby")}`; }, 1800); }
+      else b.textContent = "Search";
+    };
+    document.querySelectorAll("[data-tf]").forEach(i => i.oninput = () => {
+      const k = i.dataset.tf, v = i.value; P[k] = ["interval", "warn", "price", "tank"].includes(k) ? (parseFloat(v) || P[k]) : v;
+      if (["interval", "lastSvc"].includes(k)) { const s = serviceLine(); $("svcItem").innerHTML = item(s[0], s[1]); }
+    });
+    $("svcNow").onclick = () => { P.lastSvc = String(Math.round(B.odo)); st.service = false; syncCtl(); showTab(3, true); toast("Service reset: next at " + nextService() + " km"); };
+    $("addC").onclick = () => { const n = $("phoneIn").value.replace(/[^\d+]/g, ""); if (n.length >= 7 && !P.contacts.includes(n) && P.contacts.length < 5) { P.contacts.push(n); renderContacts(); } $("phoneIn").value = ""; };
+    $("pickC").onclick = () => toast("Opens the phone's contact picker");
+    $("testBtn").onclick = () => {
+      if (!$("testBtn")._armed) { $("testBtn")._armed = true; $("testBtn").textContent = "Start"; $("testRow").querySelector(".bodySmall").textContent = "Tap again to start. Cancel before 0 or the SMS really goes out."; }
+      else openCrash("TEST alert (tap I'M OK)");
+    };
+  }
+  function onPref(k) {
+    if (k === "speedAlert") $("spdX").classList.toggle("on", P.speedAlert);
+    if (k === "holdAlerts") $("holdX").classList.toggle("on", P.holdAlerts);
+  }
+
+  // ================= shared: theme, accent, tabs, overlays, toasts
+  function setTheme(mode) {
+    P.theme = mode;
+    const dark = mode === "dark" || (mode === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+    st.theme = dark ? "dark" : "light"; syncCtl(); applyMode();
+    const seg = $("themeSeg");
+    if (seg) { const i = ["system", "light", "dark"].indexOf(mode); seg.querySelector(".th").style.transform = `translateX(${i * 100}%)`; seg.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.theme === mode)); }
+  }
+  function setAccent(i) {
+    P.accent = i; $("phone").style.setProperty("--primary", ACCENTS[i][1]);
+    if ($("np")) renderNight(st.phase === "LIVE");
+    document.querySelectorAll("[data-acc]").forEach(b => { const on = +b.dataset.acc === i; b.classList.toggle("on", on); b.textContent = on ? "✓" : ""; });
+    document.querySelectorAll("#accents .sw").forEach((b, j) => b.classList.toggle("on", j === i));
+  }
+  function showTab(t, same) {
+    const dir = t >= st.tab ? "" : " left"; st.tab = t; clearInterval(cdTimer);
+    document.querySelectorAll("#navbar button").forEach(b => b.classList.toggle("on", +b.dataset.t === t));
+    const scrollY = same ? $("screen").scrollTop : 0;
+    $("screen").onclick = null;
+    applyMode();
+    const night = panelOn();
+    const body = night ? nightHTML() : (t === 0 && revealing() ? `<div class="reveal-bar">Back to the riding screen in <span id="revealT">10</span> s</div>` : "") + [rideHTML, tripsHTML, testHTML, settingsHTML][t]();
+    const anim = st.revealAnim ? "animation:slideUp .45s cubic-bezier(.2,.8,.2,1) both" : same ? "animation:none" : ""; st.revealAnim = false;
+    $("screen").innerHTML = `<div class="tabpane${same ? "" : dir}" style="${anim};${night ? "height:100%" : ""}">` + body + "</div>";
+    $("screen").scrollTop = night ? 0 : scrollY;
+    if (night) wireNight();
+    else if (t === 0) { prevSpeed = 0; renderRide(st.phase === "LIVE"); wireSos(); }
+    if (t === 1) wireTrips();
+    if (t === 2) wireTest();
+    if (t === 3) wireSettings();
+  }
+  function applyMode() {
+    const ph = $("phone"), n = nightActive();
+    ph.classList.toggle("oled", n);
+    ph.classList.toggle("dark", n || st.theme === "dark");
+    ph.classList.toggle("np-on", panelOn());
+  }
+  function closeOverlay(silent) {
+    const ov = $("ovTrip"); if (ov) { ov.classList.add("closing"); setTimeout(() => ov.remove(), 280); return true; }
+    return false;
+  }
+  let crashTimer = 0;
+  function openCrash(reason) {
+    if ($("ovCrash")) return;
+    let left = 30;
+    const ov = document.createElement("div"); ov.className = "ov crash"; ov.id = "ovCrash";
+    const down = /side|down/i.test(reason);
+    cue("urgent", down ? "Bike down. Hold the I button if you're OK" : "Crash detected. Hold the I button if you're OK", true, "emergency alarm");
+    const vOn = () => st.intercom && P.voice !== "off";
+    ov.innerHTML = `<div style="font-size:34px;font-weight:700">Crash detected</div><div style="color:#FFC9C2">${esc(reason)}</div>
+      <div class="num" id="crashN">30</div><div>SOS with your location goes to your emergency contacts when this reaches 0. Hold the I button for 2–3 seconds and let go, or tap below, if you're OK.</div>
+      <button class="ok" id="crashOk">I'M OK</button><button class="now" id="crashNow">Send SOS now</button>`;
+    $("phone").appendChild(ov);
+    const done = msg => { clearInterval(crashTimer); ov.animate([{ opacity: 1 }, { opacity: 0 }], 200).onfinish = () => ov.remove(); toast(msg); };
+    $("crashOk").onclick = () => { if (vOn()) say("Okay. Cancelled"); done("Cancelled. No SMS sent."); };
+    $("crashNow").onclick = () => (vOn() && say("SOS sent"), done(`📨 SOS SMS sent to ${P.contacts.length} contact${P.contacts.length === 1 ? "" : "s"}` + (P.sosCall ? ", calling the first" : "")));
+    crashTimer = setInterval(() => { left--; setTxt($("crashN"), String(left)); if (left === 10 && vOn()) say("Sending SOS in ten seconds"); if (left <= 0) $("crashNow").click(); }, 1000);
+  }
+  function toast(msg) {
+    const old = document.querySelector(".toast"); if (old) old.remove();
+    const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; $("phone").appendChild(t);
+    setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 250); }, 2600);
+  }
+
+  // ================= mock controls
+  function syncCtl() {
+    document.querySelectorAll("#ctl [data-c]").forEach(b => b.classList.toggle("on", st[b.dataset.c] === b.dataset.v));
+    document.querySelectorAll("#ctl [data-x]").forEach(b => b.classList.toggle("on", !!st[b.dataset.x]));
+  }
+  document.querySelectorAll("#ctl [data-c]").forEach(b => b.onclick = () => {
+    if (b.dataset.c === "theme") { setTheme(b.dataset.v); if (st.tab === 3) showTab(3, true); return; }
+    const was = st[b.dataset.c]; st[b.dataset.c] = b.dataset.v; syncCtl();
+    if (b.dataset.c === "app") { if (was !== b.dataset.v) b.dataset.v === "closed" ? closeApp() : openApp(); return; }
+    if (b.dataset.c === "phase" && was !== b.dataset.v) {
+      if (b.dataset.v === "OFF") B.clMan = false;
+      if (b.dataset.v === "OFF") evlog("Ignition off → bike gone → Ronin Dash saves the trip and stops itself: no process, 0 MB, no notification. Android keeps watching for the bike (it does this for Bluetooth devices anyway, no extra battery).");
+      if (was === "OFF" && b.dataset.v !== "OFF") {
+        evlog(`Ignition on → Android spots the bike (paired as a companion device) → wakes Ronin Dash → connected in a few seconds. Quiet ride notification: no icon in the status bar, no sound.`);
+        if (st.app === "closed" && P.autoOpen) {
+          if (st.mount === "pocket") evlog("Phone is in a pocket (proximity sensor covered, dark) → the screen stays off. Sounds, bike display, trips and crash check still work.");
+          else setTimeout(() => { st.app = "open"; B.autoOpened = true; syncCtl(); openApp(true); }, 900);
+        } }
+      if (b.dataset.v === "OFF" && B.autoOpened && st.app === "open") { B.autoOpened = false; setTimeout(() => { st.app = "closed"; syncCtl(); closeApp(); evlog("Bike off → the dashboard it opened closes again and the screen goes to sleep"); }, 1500); } }
+    if (b.dataset.c === "phase") { P.running = true;
+      if (was === "LIVE" && b.dataset.v !== "LIVE" && P.sndWarn) cue("disconnected", "Bike lost", false, "bike lost"); if (was !== "LIVE" && b.dataset.v === "LIVE" && P.sndWarn) cue("connected", "", false, "bike connected"); if (was !== "LIVE" && b.dataset.v === "LIVE") evlog("Bike connected"); }
+    if (b.dataset.c === "time") { applyMode(); evlog(`Time: ${b.dataset.v}` + (P.night === "night" ? ` → night panel ${b.dataset.v === "night" ? "on" : "off"}` : "")); }
+    tick(); if (st.tab === 2 || st.tab === 3) renderConn();
+  });
+  document.querySelectorAll("#ctl [data-x]").forEach(b => b.onclick = () => {
+    const k = b.dataset.x; st[k] = !st[k]; syncCtl();
+    if (k === "lowfuel") { B.tankL = st.lowfuel ? 1.6 : 8.7; B.trueL = st.lowfuel ? 1.4 : 8.44; B.burnRaw = (P.tank - B.tankL) / P.fuelCal; }
+    if (k === "gpsLost") evlog(st.gpsLost ? `GPS lost → distance from bike speed ÷ ${B.speedoK.toFixed(3)} (your speedometer reads ${((B.speedoK - 1) * 100).toFixed(1)} % high, learned from GPS)` : "GPS back → distance from GPS");
+    if (st[k] && P.sndWarn) {
+      if (k === "lamps") cue("warning", "Check engine", false, "warning lamp");
+    }
+    if (k === "service" && st[k]) { heads("Service due", "Overdue by 42 km. Book a service when you can."); evlog("📣 Notification (the only kind Ronin Dash sends): service due. Shown after the ride, never while moving."); }
+    if (k === "hazard" && st[k]) evlog(st.intercom && P.sndInd ? "🔊 Helmet: hazard ticks" : "Hazard on");
+    if (k === "intercom") evlog(st.intercom ? "Intercom connected: sounds go to the helmet" : "Intercom off: no helmet sounds");
+    tick(); });
+  ACCENTS.forEach(([n, c], i) => { const b = document.createElement("button"); b.className = "sw" + (i ? "" : " on"); b.title = n; b.style.background = c; b.onclick = () => setAccent(i); $("accents").appendChild(b); });
+  $("backBtn").onclick = () => { if (!closeOverlay()) toast("Back on the Ride tab closes the app"); };
+  $("homebar").onclick = () => closeOverlay();
+  addEventListener("keydown", e => { if (e.key === "Escape") closeOverlay(); });
+  $("evClMan").onclick = () => { if (st.phase !== "LIVE") { evlog("Bike not connected"); return; }
+    const to = B.clLvl >= 6 ? 3 : 9; B.clLvl = to; B.clMan = true;
+    evlog(`The bike now reports brightness ${to}, and we didn't send that → you changed it on the bike. Auto brightness stops for the rest of this ride and starts again next ride.`); tick(); };
+  // Assistants (Gemini, Google Assistant, Tasker, any agent) get exactly ONE thing: the bike display brightness. One exported entry
+  // point, setBikeBrightness(low | high | up | down | 2–10); it exposes nothing else (no data, no messages, no calls, no settings).
+  function agentBrightness(cmd) {
+    if (!P.agentBright) return { ok: false, say: "Ronin Dash doesn't take requests from assistants (turned off in Settings)." };
+    if (!["low", "high", "up", "down", "2", "3", "4", "5", "6", "7", "8", "9", "10"].includes(String(cmd))) return { ok: false, say: "Ronin Dash can only make the bike display brighter or dimmer." };
+    if (st.phase !== "LIVE") return { ok: false, say: "The bike isn't connected. Turn the ignition on and try again." };
+    const to = cmd === "low" ? 2 : cmd === "high" ? 10 : cmd === "up" ? Math.min(10, B.clLvl + 2) : cmd === "down" ? Math.max(2, B.clLvl - 2) : +cmd;
+    if (to === B.clLvl) return { ok: true, say: `The bike display is already at ${to * 10} %.` };
+    const from = B.clLvl; B.clLvl = to; B.clMan = true;   // asked for = the rider's choice: auto pauses for this ride, like the Mode button
+    return { ok: true, say: `Bike display brightness ${to * 10} %.`, log: `Sent 5A F1 ${to.toString(16).toUpperCase().padStart(2, "0")} … (${from} → ${to}). Auto brightness pauses for the rest of this ride.` };
+  }
+  document.querySelectorAll("#ctl [data-ag]").forEach(b => b.onclick = () => {
+    const r = agentBrightness(b.dataset.ag === "other" ? "read my messages" : b.dataset.ag);
+    evlog(`🤖 Assistant → Ronin Dash: ${b.textContent.replace("Assistant: ", "")} → ${r.ok ? "done" : "refused"}. Assistant replies: "${r.say}"${r.log ? " " + r.log : ""}`); tick(); });
+  $("evCrash").onclick = () => openCrash("Impact 6.2 g at 48 km/h, then the bike stopped");
+  $("evSpeed").onclick = () => { st.ride = "ride"; syncCtl(); B.forceFast = true; if (st.tab !== 0) showTab(0); };
+  $("evHigh").onclick = () => { st.ride = "ride"; syncCtl(); B.forceHigh = !B.forceHigh; $("evHigh").classList.toggle("on", B.forceHigh); if (st.tab !== 0) showTab(0); evlog(B.forceHigh ? "Holding ~110 km/h" : "Back to normal riding"); };
+  $("evCall").onclick = () => incoming("call", ["Mom", "Rahul", "Office"][Math.floor(Math.random() * 3)]);
+  $("evMsg").onclick = () => incoming("msg", ["Priya", "Riders group", "Amit"][Math.floor(Math.random() * 3)]);
+  $("evFuel").onclick = () => {
+    st.ride = "parked"; syncCtl(); B.station = "Indian Oil, 100 Feet Rd";
+    evlog(`Riding into ${B.station} (GPS within 40 m of a fuel station: OpenStreetMap list for your area + stations you've filled at before)`);
+    if (st.tab !== 0) showTab(0); };
+  // ---- the phone with the app closed, the opening animation, the one-time setup
+  // the app's mark: a gauge arc and a needle (also the launcher icon)
+  const MARK = (size = 40, col = "var(--primary)") => `<svg viewBox="0 0 48 32" width="${size}" height="${size * 2 / 3}" fill="none" stroke-linecap="round">
+    <path d="M6 28 A18 18 0 0 1 42 28" stroke="currentColor" stroke-opacity=".3" stroke-width="2.5"/><path d="M6 28 A18 18 0 0 1 33 12.4" stroke="${col}" stroke-width="3"/>
+    <path d="M24 28 L33 15" stroke="currentColor" stroke-width="2.5"/></svg>`;
+  function playIntro(done) {
+    const ov = document.createElement("div"); ov.className = "intro";
+    // ticks every 18° along the arc (centre 120,132, radius 100), drawn in one after another
+    const ticks = Array.from({ length: 11 }, (_, i) => { const a = Math.PI * (1 - i / 10), c = Math.cos(a), sn = Math.sin(a);
+      return `<line class="tk" x1="${120 + 88 * c}" y1="${132 - 88 * sn}" x2="${120 + 80 * c}" y2="${132 - 80 * sn}" style="animation-delay:${.45 + i * .045}s"/>`; }).join("");
+    const live = st.phase === "LIVE";
+    ov.innerHTML = `<svg viewBox="0 0 240 150"><path class="trk" d="M20 132 A100 100 0 0 1 220 132" pathLength="100"/>${ticks}
+        <path class="fil" d="M20 132 A100 100 0 0 1 220 132" pathLength="100"/><line class="ndl" x1="120" y1="132" x2="120" y2="54"/></svg>
+      <div class="wm">RONIN <span>DASH</span></div>
+      <div class="stl"><i class="${live ? "" : "wait"}"></i>${live ? "TVS22XXXXXXXX · connected" : "Waiting for your bike"}</div>`;
+    $("phone").appendChild(ov);
+    let ended = false;
+    const end = () => { if (ended) return; ended = true; ov.classList.add("out"); setTimeout(() => ov.remove(), 600);
+      document.querySelectorAll("#screen .panel, #screen .lamps, #screen .toprow, #np .np-el.on, #np .np-rinfo").forEach((e, i) => e.animate(
+        [{ opacity: 0, transform: "translateY(12px)" }, { opacity: 1, transform: "none" }], { duration: 700, delay: 120 + i * 70, easing: "cubic-bezier(.2,.7,.2,1)", fill: "backwards" }));
+      done && done(); };
+    ov.onclick = end; setTimeout(end, 2800);
+  }
+  function homeHTML() {
+    const d = new Date(), t = (d.getHours() % 12 || 12) + ":" + String(d.getMinutes()).padStart(2, "0");
+    const ap = (bg, label, svg) => `<button class="app"><i style="background:${bg}">${svg}</i>${label}</button>`;
+    const sq = c => `<svg viewBox="0 0 24 24" style="width:26px;height:26px" fill="${c}"><circle cx="12" cy="12" r="8"/></svg>`;
+    return `<div class="big">${t}</div><div class="date">${d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</div>
+      <div class="apps">${ap("#1FA463", "Phone", sq("#fff"))}${ap("#3B7BF6", "Messages", sq("#fff"))}${ap("#fff", "Maps", sq("#E5484D"))}
+      <button class="app ronin" id="roninIcon"><i style="color:#fff">${MARK(38)}</i>Ronin Dash</button></div>`;
+  }
+  function closeApp() {
+    if ($("home")) return; const h = document.createElement("div"); h.className = "home"; h.id = "home"; h.innerHTML = homeHTML(); $("phone").appendChild(h);
+    h.animate([{ opacity: 0, transform: "scale(1.04)" }, { opacity: 1, transform: "none" }], { duration: 300, easing: "ease-out" });
+    $("roninIcon").onclick = () => { st.app = "open"; syncCtl(); openApp(); };
+    evlog(st.phase === "OFF" ? "App closed. Bike off → nothing of Ronin Dash is running." : "App closed. Still connected and working in the background (helmet sounds, bike display, trips, crash check) with no screen. Only a silent, collapsed notification exists, as Android requires.");
+  }
+  function openApp(byBike) {
+    const h = $("home"); if (h) { h.animate([{ opacity: 1 }, { opacity: 0 }], 200).onfinish = () => h.remove(); }
+    showTab(0); playIntro();
+    evlog(byBike ? "Phone on the mount → the dashboard opens by itself, over the lock screen, and does its needle sweep together with the bike's cluster" : "Opened from the app icon → opening animation, then the dashboard (the connection was already there)");
+  }
+  function applyScreen() {
+    const ph = $("phone"); let r = $("rest");
+    ph.classList.toggle("sunmax", B.screen === "max" || B.screen === "bright");
+    const resting = B.screen === "rest" || B.screen === "rest-hot" || B.screen === "off";
+    if (resting && !r) { r = document.createElement("div"); r.id = "rest"; r.className = "rest"; ph.appendChild(r); }
+    if (r) { r.innerHTML = B.screen === "off" ? "" : `<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">${B.screen === "rest-hot"
+        ? '<path d="M10 14V5.5a2 2 0 0 1 4 0V14a4 4 0 1 1-4 0z"/><path d="M12 9.5v6.5"/>' : '<circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/>'}</svg>`;
+      r.classList.toggle("on", resting); }
+  }
+  function heads(title, text) {
+    const n = document.createElement("div"); n.className = "heads";
+    n.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.8a5 5 0 0 0-4.3 6.8l-6.4 6.4a1.9 1.9 0 0 0 2.7 2.7l6.4-6.4a5 5 0 0 0 6.8-4.3l-2.9 2.1-2.6-.6-.6-2.6z"/></svg><div><b>${esc(title)}</b><span>${esc(text)}</span></div>`;
+    $("phone").appendChild(n); setTimeout(() => { n.classList.add("bye"); setTimeout(() => n.remove(), 300); }, 4200);
+  }
+  const SETUP_PERMS = [
+    ["Nearby devices", "Talk to the bike", true], ["Location, all the time", "Trips, mileage, fuel stops, location in an SOS", true],
+    ["Phone and contacts", "Caller name on the bike, answer with the I button", true], ["Notification access", "WhatsApp, SMS and Maps turns on the bike", true],
+    ["SMS", "Crash alert to your contacts (optional)", false], ["Display over other apps", "Assistant and crash alert from your pocket (optional)", false],
+    ["Notifications", "Service reminders only", true], ["Battery: no restrictions", "Lets Android wake the app when the bike turns on", true],
+    ["Autostart (Xiaomi, Redmi, POCO)", "Same, on Xiaomi phones", true]];
+  function openSetup() {
+    if ($("setup")) return; const ov = document.createElement("div"); ov.className = "setup"; ov.id = "setup"; $("phone").appendChild(ov);
+    const granted = new Set([0]); let step = 0;
+    const dots = () => `<div class="dots">${[0, 1, 2, 3].map(i => `<i class="${i <= step ? "on" : ""}"></i>`).join("")}</div>`;
+    const draw = () => {
+      if (step === 0) ov.innerHTML = `${dots()}<div class="grow" style="display:grid;place-items:center;color:var(--on)">${MARK(150)}</div>
+        <h1>Set up once</h1><p>After this Ronin Dash connects by itself every time you turn the bike on, like your intercom. You never have to open it. Nothing runs while the bike is off.</p>
+        <button class="btn big" data-s="next">Start</button>`;
+      else if (step === 1) ov.innerHTML = `${dots()}<h1>Find your bike</h1><p>Close TVS Connect. Turn the ignition on. On the bike: long-press Mode → CLOCK SETTING → press Mode once. A code shows on the bike.</p>
+        <div class="grow"></div><button class="btn big" data-s="find">Find my bike</button>`;
+      else if (step === 2) ov.innerHTML = `${dots()}<h1>Allow once</h1><p>So it can work without you opening it. Tap Allow on each, or Allow all.</p>
+        ${SETUP_PERMS.map(([n, w], i) => `<div class="prow"><div><b>${n}</b><span>${w}</span></div>${granted.has(i) ? `<span class="ok">✓</span>` : `<button class="btn tonal" data-p="${i}" style="height:34px;padding:0 14px">Allow</button>`}</div>`).join("")}
+        <div style="height:14px"></div><div style="display:flex;gap:8px"><button class="btn outlined" data-s="all" style="flex:1">Allow all</button><button class="btn" data-s="next" style="flex:1" ${SETUP_PERMS.every(([, , req], i) => !req || granted.has(i)) ? "" : "disabled"}>Continue</button></div>`;
+      else ov.innerHTML = `${dots()}<div class="grow" style="display:grid;place-items:center;font-size:64px;color:#1FA463">✓</div><h1>All set</h1>
+        <p>Turn the bike off and on: it connects in a few seconds with the app closed. Open the app only when you want to look at trips or change settings. The only notification you'll get is when service is due.</p><button class="btn big" data-s="done">Done</button>`;
+    };
+    ov.onclick = e => {
+      const p = e.target.closest("[data-p]"); if (p) { granted.add(+p.dataset.p); evlog(`Setup: ${SETUP_PERMS[+p.dataset.p][0]} → Android's own permission screen → allowed`); draw(); return; }
+      const b = e.target.closest("[data-s]"); if (!b) return; const a = b.dataset.s;
+      if (a === "next") { step++; draw(); }
+      else if (a === "all") { SETUP_PERMS.forEach((_, i) => setTimeout(() => { granted.add(i); draw(); }, i * 260)); evlog("Setup: Allow all → Android's permission screens one after another"); }
+      else if (a === "find") { b.textContent = "Searching…"; b.disabled = true; setTimeout(() => {
+        const d = document.createElement("div"); d.className = "sysdlg";
+        d.innerHTML = `<div><h3>Allow Ronin Dash to access TVS22XXXXXXXX?</h3><p>This app will be allowed to connect to your bike and to run in the background when it's nearby.</p>
+          <div class="row"><button class="btn text" data-d="no">Don't allow</button><button class="btn" data-d="yes">Allow</button></div></div>`;
+        $("phone").appendChild(d);
+        d.onclick = ev => { const x = ev.target.closest("[data-d]"); if (!x) return; d.remove();
+          if (x.dataset.d === "yes") { evlog("Setup: paired as a companion device (Android's own dialog) → Android wakes the app whenever the bike is near; code typed from the bike display"); step++; draw(); }
+          else { b.textContent = "Find my bike"; b.disabled = false; } }; }, 1100); }
+      else if (a === "done") { ov.animate([{ opacity: 1 }, { opacity: 0 }], 250).onfinish = () => { ov.remove(); showTab(0); playIntro(); }; }
+    };
+    draw();
+  }
+  $("evSetup").onclick = () => { if ($("home")) { $("home").remove(); st.app = "open"; syncCtl(); } openSetup(); };
+  $("evDown").onclick = () => {
+    if (st.mount !== "mount") { evlog("Phone not on the mount → the lean sensor can't tell the bike's angle; only impact detection applies"); return; }
+    st.ride = "parked"; syncCtl();
+    evlog("Phone on the mount reads 84° lean for 3 s, right after moving at 38 km/h, and the bike stopped → bike is on its side");
+    setTimeout(() => openCrash("Bike down: lying on its side after moving (84°)"), 1200); };
+  $("evInd").onclick = () => { st.ride = "ride"; syncCtl(); B.target = 45; B.blinkSide = "left"; B.blink = 40; evlog("Left indicator on and forgotten…"); if (st.intercom && P.sndInd) evlog("🔊 Helmet: indicator ticks"); };
+  $("evStand").onclick = () => { st.ride = "ride"; syncCtl(); st.standMoving = true; evlog("Side stand goes down while moving…"); setTimeout(() => { st.standMoving = false; evlog("Side stand up"); }, 7000); };
+  $("fixList").innerHTML = FIXES.map(f => `<li>${esc(f)}</li>`).join("");
+  $("noticed").innerHTML = NOTICED.map(f => `<li>${esc(f)}</li>`).join("");
+  document.querySelectorAll("#navbar button").forEach(b => b.onclick = () => { closeOverlay(); showTab(+b.dataset.t); });
+  const clock = () => { const d = new Date(); $("clock").textContent = (d.getHours() % 12 || 12) + ":" + String(d.getMinutes()).padStart(2, "0"); };
+  clock(); setInterval(clock, 10000);
+
+  showTab(0); playIntro();
+  setInterval(tick, 1000);
+  tick();
+  window.mock = { B, st, P, playIntro, get released() { return released; } }; // for testing from the console
+})();
+</script>
+</body>
+</html>

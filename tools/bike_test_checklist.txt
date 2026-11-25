@@ -1,0 +1,47 @@
+RONIN SOLO TEST - phone only
+============================
+BEFORE (at home, once):
+- Developer options > Enable Bluetooth HCI snoop log = Enabled
+- Turn Bluetooth OFF then ON (starts recording)
+
+AT THE BIKE - wait ~10 seconds between every step.
+
+PART A - official TVS app
+A1  Ignition ON. Open TVS Connect, let it connect. Do nothing for 30 s.
+A2  Press I button ONCE (short). Wait 10 s.
+A3  Press I button LONG (hold 2 s). Wait 10 s.
+A4  Press I button TWICE fast. Wait 10 s.
+A5  Press I button once more (short). Wait 10 s.
+A6  Mode button: Urban > Rain > Urban.
+A7  Left indicator on/off, right indicator on/off, high beam on/off.
+A8  Side stand up, then down.
+A9  (optional) Send an SMS to YOUR OWN number from the phone.
+A10 Start engine, idle 30 s, rev gently twice, switch engine off.
+A11 Clutch in, shift 1st > neutral (engine off).
+A12 Force-stop TVS Connect (Settings > Apps > TVS Connect > Force stop).
+
+PART B - nRF Connect (our own messages)
+B1  Open nRF Connect > connect TVS22XXXXXXXX > Client > Unknown Service.
+B2  Characteristic 0x5354: tap the triple-arrow (subscribe).
+B3  Characteristic 0x5352: tap the up-arrow (write) > BYTE ARRAY > paste ONE line below > Send.
+    Watch the bike display after each, wait 10 s.
+
+    Caller 9876543210:
+5B43D2D3DCDDDEDFD8D9DADBEBEBEBEBEBEBEBFF
+
+    Text HELLO RONIN:
+5B4CA3AEA7A7A4CBB9A4A5A2A5EBEBEBEBEBEBFF
+
+    Rider name RONIN:
+5B52B9A4A5A2A5EBEBEBEBEBEBEBEBEBEBEBEBFF
+
+    3 missed calls, 2 SMS:
+5B4AAF93EBEBE3DFC3FBE8EBF2E0F1E9EBEBEBFF
+
+B3b Display brightness: DONE 2026-11-25 (see PROTOCOL.md, 5A F1). Levels 1-10 = 10-100 %.
+
+B4  Press I button ONCE while nRF Connect is connected.
+B5  Disconnect. Ignition OFF.
+
+WRITE DOWN what the bike display showed for each B3 line (or take a photo).
+Then back home: plug phone into the Mac and tell Claude.
