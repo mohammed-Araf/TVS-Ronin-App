@@ -13,7 +13,7 @@ official connected-vehicle app.
 </p>
 <p align="center"><sub>Opening · Dashboard · Riding · Fast mode · Trips · Trip map. Screens from the design mock-up, demo ride Hebbal → Nandi Hills.</sub></p>
 
-<p align="center"><b><a href="https://github.com/mohammed-Araf/TVS-Ronin-App/releases/latest">⬇ Download the APK</a></b> · Android 12 or newer</p>
+<p align="center"><b><a href="https://github.com/mohammed-Araf/TVS-Ronin-App/releases/latest">⬇ Download the APK</a></b> · Android 12 or newer · <a href="https://t.me/RoninDashApp">Telegram group</a></p>
 
 > **Unofficial.** This project is not affiliated with, endorsed by, or connected to TVS Motor Company. "TVS" and "Ronin"
 > are their trademarks and are used only to say which motorcycle this works with. No TVS code, logos or assets are included.
@@ -135,7 +135,7 @@ support it by UPI:
 
 UPI ID: **alancruse@airtel**
 
-Bug reports and ideas help just as much: [open an issue](https://github.com/mohammed-Araf/TVS-Ronin-App/issues/new/choose).
+Bug reports and ideas help just as much: [open an issue](https://github.com/mohammed-Araf/TVS-Ronin-App/issues/new/choose), or chat in the [Telegram group](https://t.me/RoninDashApp).
 
 ## Credits
 
