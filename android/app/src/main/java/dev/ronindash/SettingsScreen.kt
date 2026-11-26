@@ -217,7 +217,7 @@ fun SettingsScreen(modifier: Modifier) {
                 OutlinedTextField(tank, { tank = it; it.toDoubleOrNull()?.let { v -> prefs.tankL = v } }, label = { Text("Tank (L)") },
                     singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
             }
-            Hint("Learned from %d fill-ups  ·  %.1f km/l".format(prefs.fulls, prefs.recKm / prefs.recL.coerceAtLeast(.1)) +
+            Hint("%.1f km/l".format(prefs.recKm / prefs.recL.coerceAtLeast(.1)) +
                 (if (prefs.speedoK != 1.0) "  ·  speedo %+.1f%%".format((prefs.speedoK - 1) * 100) else ""))
         }
 

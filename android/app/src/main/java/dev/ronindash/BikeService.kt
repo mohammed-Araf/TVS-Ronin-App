@@ -121,8 +121,9 @@ class BikeService : Service() {
             override var poured by prefs::poured; override var fullKnown by prefs::fullKnown; override var speedoK by prefs::speedoK
             override val tankL get() = prefs.tankL; override val fuelPrice get() = prefs.fuelPrice
             override var ml by prefs::fuelMl; override val warmC get() = prefs.warmC
+            override var gauge by prefs::fuelGauge; override var odo by prefs::fuelOdo
         }
-        fuel = FuelModel(store)
+        fuel = FuelModel(store).also { it.onLog = { m -> Bike.log(m) } }
         trips = TripRecorder(this) { fuel.newTrip(); Bike.lean.value = Lean() }
         trips.resume()
         sensors = PhoneSensors(this)
@@ -796,7 +797,6 @@ class BikeService : Service() {
             Bike.ask.value = FuelAsk(station = nearStation() ?: "")
             Bike.log("[fuel] gauge went up while parked (${prefs.lastBars} → $bars bars): asking")
         }
-        if (bars < old) fuel.gaugePoint(bars)?.let { Bike.log("[fuel] $it") }
     }
 
     private fun nearStation(): String? {
@@ -1042,7 +1042,8 @@ class BikeService : Service() {
             val rpm = if (live && "rpm" !in s.unknown) s.rpm else 0
             val before = fuel.tripL
             val km = fuel.step(1.0, rpm, s.throttlePct, if (live) s.speed.toDouble() else 0.0, gpsKmh, live && s.engineOn, prefs.tripRecord,
-                gear = if (live) s.gear else -1, engineC = if (live) s.engineTempC else null)
+                gear = if (live) s.gear else -1, engineC = if (live) s.engineTempC else null,
+                bars = if (live && s.frames > 2) s.fuelBars else -1, odoKm = if (live) s.odoKm else 0.0)
             val litres = fuel.tripL - before
             crash.setRiding(live && (s.engineOn || s.speed > 0))
             if (prefs.tripRecord) trips.sample(s, loc, live, km, if (litres > 0) litres else 0.0)
