@@ -120,6 +120,7 @@ class BikeService : Service() {
             override var recL by prefs::recL; override var tankLeftL by prefs::tankLeftL; override var burnRaw by prefs::burnRaw
             override var poured by prefs::poured; override var fullKnown by prefs::fullKnown; override var speedoK by prefs::speedoK
             override val tankL get() = prefs.tankL; override val fuelPrice get() = prefs.fuelPrice
+            override var ml by prefs::fuelMl; override val warmC get() = prefs.warmC
         }
         fuel = FuelModel(store)
         trips = TripRecorder(this) { fuel.newTrip(); Bike.lean.value = Lean() }
@@ -1040,7 +1041,8 @@ class BikeService : Service() {
             val gpsKmh = if (fresh && l!!.hasSpeed()) l.speed * 3.6 else null
             val rpm = if (live && "rpm" !in s.unknown) s.rpm else 0
             val before = fuel.tripL
-            val km = fuel.step(1.0, rpm, s.throttlePct, if (live) s.speed.toDouble() else 0.0, gpsKmh, live && s.engineOn, prefs.tripRecord)
+            val km = fuel.step(1.0, rpm, s.throttlePct, if (live) s.speed.toDouble() else 0.0, gpsKmh, live && s.engineOn, prefs.tripRecord,
+                gear = if (live) s.gear else -1, engineC = if (live) s.engineTempC else null)
             val litres = fuel.tripL - before
             crash.setRiding(live && (s.engineOn || s.speed > 0))
             if (prefs.tripRecord) trips.sample(s, loc, live, km, if (litres > 0) litres else 0.0)

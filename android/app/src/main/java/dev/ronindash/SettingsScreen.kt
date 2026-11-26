@@ -217,9 +217,8 @@ fun SettingsScreen(modifier: Modifier) {
                 OutlinedTextField(tank, { tank = it; it.toDoubleOrNull()?.let { v -> prefs.tankL = v } }, label = { Text("Tank (L)") },
                     singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
             }
-            Hint("Fuel is counted by the app from engine speed and throttle, corrected by each fill-up you log " +
-                "(correction ×%.2f, %d full tanks so far). Range uses your mileage over the last ~50 km (%.1f km/l). ".format(prefs.fuelCal, prefs.fulls, prefs.recKm / prefs.recL.coerceAtLeast(.1)) +
-                (if (prefs.speedoK != 1.0) "Your speedometer reads %+.1f%% against GPS; trips use the corrected distance.".format((prefs.speedoK - 1) * 100) else ""))
+            Hint("Learned from %d fill-ups  ·  %.1f km/l".format(prefs.fulls, prefs.recKm / prefs.recL.coerceAtLeast(.1)) +
+                (if (prefs.speedoK != 1.0) "  ·  speedo %+.1f%%".format((prefs.speedoK - 1) * 100) else ""))
         }
 
         PermissionsSection(refresh)

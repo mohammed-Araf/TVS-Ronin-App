@@ -10,7 +10,8 @@ import kotlin.math.min
  *
  * Fuel flow (L/h) = K × RPM × engine load, load from the throttle the rider gives: idle ≈ 0.15 L/h, fuel cut with the throttle
  * shut while rolling, richer above 70 % throttle. Calibrated so steady 60 km/h in 5th ≈ 44 km/l and 120 km/h ≈ 32 km/l, then
- * corrected per bike (fuelCal) at every full-to-full fill. Distance comes from GPS; without GPS, bike speed ÷ the speedometer
+ * corrected per bike by a small learning model ([FuelLearner]: physics + idle, wind, accelerating, low gear, cold engine)
+ * at every fill-up. Distance comes from GPS; without GPS, bike speed ÷ the speedometer
  * error learned from GPS. Range = OUR petrol left × the rider's own mileage over the last ~50 km. The bike's DTE is never used;
  * its fuel gauge (in BARS, 0–9) only spots a fill-up and gives two fixed points (1 bar ≈ 3.2 L, 0 bars ≈ 2 L).
  * Plain Kotlin state + a [Store] so it runs in unit tests.
@@ -20,7 +21,13 @@ class FuelModel(private val store: Store) {
         var fuelCal: Double; var fulls: Int; var recKm: Double; var recL: Double; var tankLeftL: Double
         var burnRaw: Double; var poured: Double; var fullKnown: Boolean; var speedoK: Double
         val tankL: Double; val fuelPrice: Double
+        /** The learning model's state ([FuelLearner.save]). */
+        var ml: String
+        val warmC: Int
     }
+
+    /** Small on-device model: learns this bike's real fuel use from fill-ups (see [FuelLearner]). */
+    val learner = FuelLearner(store.ml).also { if (store.ml.isBlank()) it.w[0] = store.fuelCal.coerceIn(.6, 1.6) }   // keep what the old model learned
 
     companion object {
         const val K = 5.27e-4
@@ -63,7 +70,8 @@ class FuelModel(private val store: Store) {
      * One second of riding (dt seconds). gpsKmh = null when there's no fresh, accurate GPS fix.
      * Returns the distance used for this step (km).
      */
-    fun step(dt: Double, rpm: Int, throttle: Int, bikeKmh: Double, gpsKmh: Double?, engineOn: Boolean, recording: Boolean): Double {
+    fun step(dt: Double, rpm: Int, throttle: Int, bikeKmh: Double, gpsKmh: Double?, engineOn: Boolean, recording: Boolean,
+             gear: Int = -1, engineC: Int? = null): Double {
         val dv = if (lastBike < 0) 0.0 else bikeKmh - lastBike
         lastBike = bikeKmh
         if (gpsKmh != null && bikeKmh > 20 && gpsKmh > 15 && abs(dv) < 3) {
@@ -72,13 +80,15 @@ class FuelModel(private val store: Store) {
         val kmh = gpsKmh ?: (bikeKmh / store.speedoK)
         val moving = bikeKmh > 3
         val distKm = if (moving) kmh * dt / 3600 else 0.0            // no GPS creep while stopped
-        lphNow = if (engineOn) lph(rpm, throttle, bikeKmh) * store.fuelCal else 0.0
+        val feat = learner.features(rpm, throttle, bikeKmh, dv / dt, gear, engineC, store.warmC, engineOn)
+        lphNow = learner.predict(feat)
+        learner.accumulate(feat, dt)
         val litres = lphNow * dt / 3600
         fV = fV * .6 + (if (moving) kmh else 0.0) * .4
         fF = fF * .6 + lphNow * .4
         live = if (moving && fF > 0) min(99.0, fV / fF) else 0.0
         if (tank >= 0) tank = max(0.0, tank - litres)
-        store.burnRaw += litres / store.fuelCal
+        store.burnRaw += litres
         val dec = exp(-distKm / 50)
         store.recKm = store.recKm * dec + distKm
         store.recL = store.recL * dec + litres
@@ -99,32 +109,25 @@ class FuelModel(private val store: Store) {
         if (bars > 1 || !store.fullKnown) return null
         val left = barsToL(bars, store.tankL)
         val actual = store.tankL - left + store.poured
-        val ratio = actual / max(.5, store.burnRaw)
-        val prev = store.fuelCal
-        if (abs(ratio / prev - 1) > .3) return null
-        store.fuelCal = prev + .1 * (ratio - prev)
+        val r = learner.learn(actual, 1.2) ?: return null              // the gauge is coarse: weak evidence
         tank = (tank + left) / 2
         save()
-        return "gauge at $bars bar: about %.1f L used since full → fuel model ×%.3f → ×%.3f".format(actual, prev, store.fuelCal)
+        return "gauge at $bars bar: $r → ${learner.summary()}"
     }
 
     // ------------------------------------------------------------- fills
 
     /** Snapshot before a gauge guess, so a later answer can undo it. */
-    private data class Snap(val tank: Double, val burnRaw: Double, val poured: Double, val fullKnown: Boolean, val fuelCal: Double)
+    private data class Snap(val tank: Double, val burnRaw: Double, val poured: Double, val fullKnown: Boolean, val ml: String)
     private var snap: Snap? = null
 
     /** Nobody answered: the fuel gauge decides (how far it rose; ≥ 9 bars = full tank). Returns the guess text. */
     fun gaugeFill(bars0: Int, bars1: Int): String {
-        snap = Snap(tank, store.burnRaw, store.poured, store.fullKnown, store.fuelCal)
+        snap = Snap(tank, store.burnRaw, store.poured, store.fullKnown, learner.save())
         val full = bars1 >= FUEL_BARS
         if (full) {
-            if (store.fullKnown) {
-                val actual = store.tankL - barsToL(bars0, store.tankL) + store.poured
-                val ratio = actual / max(.5, store.burnRaw); val prev = store.fuelCal
-                if (abs(ratio / prev - 1) <= .3) store.fuelCal = prev + .15 * (ratio - prev)
-            }
-            tank = store.tankL; store.burnRaw = 0.0; store.poured = 0.0; store.fullKnown = true
+            if (store.fullKnown) learner.learn(store.tankL - barsToL(bars0, store.tankL) + store.poured, 1.5)
+            tank = store.tankL; store.burnRaw = 0.0; store.poured = 0.0; store.fullKnown = true; learner.resetTotals()
         } else {
             val added = barsToL(bars1, store.tankL) - barsToL(bars0, store.tankL)
             tank = min(store.tankL, max(0.0, tank) + added); store.poured += added
@@ -135,7 +138,7 @@ class FuelModel(private val store: Store) {
 
     fun undoGuess() {
         val z = snap ?: return
-        tank = z.tank; store.burnRaw = z.burnRaw; store.poured = z.poured; store.fullKnown = z.fullKnown; store.fuelCal = z.fuelCal
+        tank = z.tank; store.burnRaw = z.burnRaw; store.poured = z.poured; store.fullKnown = z.fullKnown; learner.restore(z.ml)
         snap = null; save()
     }
 
@@ -150,15 +153,11 @@ class FuelModel(private val store: Store) {
         var msg = "Full tank"
         if (pumpL != null && pumpL > 0 && store.fullKnown) {
             val actual = pumpL + store.poured
-            val ratio = actual / max(.5, store.burnRaw); val prev = store.fuelCal
-            msg = if (abs(ratio / prev - 1) > .3) "Full tank: %.1f L poured vs %.1f L expected is too far off, not used to calibrate".format(actual, store.burnRaw * prev)
-            else {
-                val w = actual / (actual + 8)
-                store.fuelCal = prev + w * (ratio - prev); store.fulls++
-                "Full to full: %.1f L poured, model expected %.1f L → fuel model ×%.3f → ×%.3f".format(actual, store.burnRaw * prev, prev, store.fuelCal)
-            }
+            val r = learner.learn(actual, .3 + .03 * actual)              // the pump is exact; "full" varies a little
+            msg = if (r == null) "Full tank: %.1f L poured vs %.1f L expected is too far off, not used to learn".format(actual, learner.expectedSinceFull())
+            else { store.fulls++; "Full to full: $r → ${learner.summary()}" }
         }
-        tank = store.tankL; store.burnRaw = 0.0; store.poured = 0.0; store.fullKnown = true
+        tank = store.tankL; store.burnRaw = 0.0; store.poured = 0.0; store.fullKnown = true; learner.resetTotals()
         save()
         return msg
     }
@@ -173,5 +172,5 @@ class FuelModel(private val store: Store) {
         else "%.2f L added → petrol left %.1f L".format(litres, tank)
     }
 
-    fun save() { store.tankLeftL = tank }
+    fun save() { store.tankLeftL = tank; store.ml = learner.save(); store.fuelCal = learner.w[0] }
 }

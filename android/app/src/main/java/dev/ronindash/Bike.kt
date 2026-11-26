@@ -166,6 +166,8 @@ class Prefs(ctx: Context) {
     // ---- fuel model (learned per bike)
     /** Fuel model correction from full-to-full fills (1 = the stock model). */
     var fuelCal by d("fuelCal", 1.0)
+    /** The on-device fuel model ([FuelLearner]): weights, covariance, totals since the last full tank. */
+    var fuelMl by s("fuelMl", "")
     var fulls by i("fulls", 0)
     /** Recent riding, distance and fuel weighted over the last ~50 km (kept across rides). */
     var recKm by d("recKm", 50.0)
