@@ -13,6 +13,8 @@ official connected-vehicle app.
 </p>
 <p align="center"><sub>Opening · Dashboard · Riding · Fast mode · Trips · Trip map. Screens from the design mock-up, demo ride Hebbal → Nandi Hills.</sub></p>
 
+<p align="center"><b><a href="https://github.com/mohammed-Araf/TVS-Ronin-App/releases/latest">⬇ Download the APK</a></b> · Android 12 or newer</p>
+
 > **Unofficial.** This project is not affiliated with, endorsed by, or connected to TVS Motor Company. "TVS" and "Ronin"
 > are their trademarks and are used only to say which motorcycle this works with. No TVS code, logos or assets are included.
 
@@ -52,7 +54,7 @@ Ronin Dash talks to the cluster directly over Bluetooth LE using a protocol docu
 - **Protocol decoded:**
   - transport, XOR encoding and checksum
   - all bike → phone frame types
-  - phone → bike status, text, caller and settings frames
+  - phone → bike status, text, caller, navigation and settings frames
 - **Verified on the bike:**
   - speed, RPM, gear, telltales, clutch and side stand
   - I button and Mode events, with exact press timing
@@ -60,30 +62,34 @@ Ronin Dash talks to the cluster directly over Bluetooth LE using a protocol docu
   - display brightness write and readback
   - ride mode readback
   - fuel gauge bars
-- **Android app:**
+- **Android app (0.5):**
   - auto-connect background service
-  - live ride screen and settings
-  - trip recording
-  - crash detection
-  - guided bike-test screen and debug logging
+  - redesigned dashboard, riding and fast-mode screens (the 31 changes from the browser mock-up)
+  - missed calls and unread messages at the top of the app, and their counts sent to the cluster
+  - I button: hold 2–3 s for the phone's assistant or the Gemini app (your choice in Settings)
+  - overspeed: your limit is sent to the cluster's own warning, plus a ping in the helmet
+  - Google Maps turns: distance and left/right sent to the cluster, tones in the helmet
+  - fuel and range that learn the bike from its own fuel gauge, no logging needed
+  - display brightness on the dashboard (auto or slider), engine warm-up indicator
+  - trip recording with a 3D route map, crash detection, guided bike-test screen and debug logging
 - **Official-app bugs found and avoided:**
   - assistant auto-wake
   - call-button matching
   - fuel read as a percentage
   - caller-frame flooding linked to the "99" count
-- **Sound design:** earcon pack and voice clips.
+- **Sound design:** earcon pack, voice clips and an engine-start sound recorded from a real Ronin.
 
 ### 🚧 In progress
 
-- Porting the reviewed UI redesign, about 30 changes designed in the browser mock-up, into the app.
 - A full real-world ride with Ronin Dash as the only app.
+- Confirming on the bike: unread counts (the "99" fix), the overspeed warning and turn distances on the cluster.
 
 ### 🔭 Next big things (ideas welcome)
 
 - **Any navigation app:** turn arrows and distance from Google Maps, Waze, HERE WeGo, Organic Maps, OsmAnd and others,
   not just Google Maps.
 - **Music:** play, pause, skip and volume for Spotify, YouTube Music or any player.
-- **Your assistant:** Gemini, Google Assistant or any other, on the I button.
+- **More assistants:** ChatGPT, Alexa or any other assistant app on the I button (today: the phone's assistant or Gemini).
 - **Riding-safe controls.** The bike has one I button that sends one signal, so music and volume need another way that is
   easy with gloves and never needs a look at the phone. Options being explored:
   - press patterns on the I and Mode buttons (double press, press-and-hold)
@@ -94,10 +100,7 @@ Ronin Dash talks to the cluster directly over Bluetooth LE using a protocol docu
 
 ### 📋 Planned
 
-- [ ] Turn-by-turn arrows on the cluster: map the navigation pictogram ids (§7 of the protocol).
-- [ ] Unread SMS / WhatsApp counts on the cluster, and confirm the "99" fix.
-- [ ] Overspeed warning on the cluster.
-- [ ] Fuel used, measured from the engine's injection counter and calibrated against fill-ups.
+- [ ] Full turn arrows on the cluster (roundabouts, keep left/right, exits): map the remaining pictogram ids (§7 of the protocol).
 - [ ] Faster recovery when call audio on an intercom drops the bike link.
 - [ ] Signed release builds.
 
