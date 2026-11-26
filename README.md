@@ -3,6 +3,15 @@
 An open-source Android companion app for the **TVS Ronin** motorcycle (2024 SE, cluster type U368). It replaces the
 official connected-vehicle app.
 
+<p align="center">
+  <img src="docs/screenshots/1-opening.jpg" width="19%" alt="Opening animation">
+  <img src="docs/screenshots/2-riding.jpg" width="19%" alt="Riding with the next turn">
+  <img src="docs/screenshots/3-fast-compass.jpg" width="19%" alt="Fast mode compass">
+  <img src="docs/screenshots/4-trips.jpg" width="19%" alt="Trip log">
+  <img src="docs/screenshots/5-trip-map.jpg" width="19%" alt="Trip on a 3D map">
+</p>
+<p align="center"><sub>Opening · Riding · Fast mode · Trips · Trip map. Screens from the design mock-up, demo ride Hebbal → Nandi Hills.</sub></p>
+
 > **Unofficial.** This project is not affiliated with, endorsed by, or connected to TVS Motor Company. "TVS" and "Ronin"
 > are their trademarks and are used only to say which motorcycle this works with. No TVS code, logos or assets are included.
 
