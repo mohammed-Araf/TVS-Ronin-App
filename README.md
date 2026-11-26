@@ -99,6 +99,17 @@ cd android && ./gradlew assembleDebug
 The APK is written to `android/app/build/outputs/apk/debug/`. On first launch, pair the bike in Android's Bluetooth
 settings using the passkey shown on the cluster. Then choose it in **Settings**.
 
+## Support the project
+
+Ronin Dash is free, with no ads and no tracking, and is built in spare time. If it makes your rides better, you can
+support it by UPI:
+
+<img src="docs/upi-qr.png" alt="UPI QR code for alancruse@airtel" width="180">
+
+UPI ID: **alancruse@airtel**
+
+Bug reports and ideas help just as much: [open an issue](https://github.com/mohammed-Araf/TVS-Ronin-App/issues/new/choose).
+
 ## Credits
 
 Voice clips: [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0).
