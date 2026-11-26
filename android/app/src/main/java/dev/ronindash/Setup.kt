@@ -216,7 +216,7 @@ fun SetupFlow(done: () -> Unit) {
     }
 }
 
-@Composable private fun H(t: String) = Text(t, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
+@Composable private fun H(t: String) = Text(t, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
 @Composable private fun P(t: String) = Text(t, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
     modifier = Modifier.padding(top = 10.dp))
 @Composable private fun Big(t: String, enabled: Boolean = true, onClick: () -> Unit) =

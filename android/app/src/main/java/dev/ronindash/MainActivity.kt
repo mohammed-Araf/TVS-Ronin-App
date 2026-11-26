@@ -216,7 +216,8 @@ private fun Root(showOpening: Boolean, needsSetup: Boolean, screen: MutableState
     var setup by remember { mutableStateOf(needsSetup) }
     var opening by rememberSaveable { mutableStateOf(showOpening && !needsSetup) }
     val scr by screen.collectAsState()
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    // Surface sets the default text colour to the theme's (otherwise text with no colour of its own is black on dark)
+    androidx.compose.material3.Surface(Modifier.fillMaxSize(), color = Color.Black, contentColor = MaterialTheme.colorScheme.onBackground) { Box(Modifier.fillMaxSize()) {
         when {
             setup -> SetupFlow { setup = false; opening = true }
             else -> App(startTab = 0)
@@ -228,7 +229,7 @@ private fun Root(showOpening: Boolean, needsSetup: Boolean, screen: MutableState
                 if (scr != "off") Ic(if (scr == "rest-hot") "thermo" else "speedo", Color(0xFF3A3B40), 34.dp)
             }
         }
-    }
+    }}
 }
 
 @Composable
