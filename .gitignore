@@ -39,3 +39,7 @@ android/.idea/
 tools/dashboard-mock.html
 tools/ronin-test-guide.html
 tools/bike_test_checklist.txt
+
+# Generated listening set (rebuild with tools/engine_variants.py)
+/tools/sounds/engine_variants/
+/tools/engine-variants.html

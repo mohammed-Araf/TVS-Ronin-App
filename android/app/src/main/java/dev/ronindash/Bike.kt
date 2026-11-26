@@ -16,6 +16,9 @@ object Bike {
     val state = MutableStateFlow(BikeState())
     val missedCalls = MutableStateFlow(0)
     val unreadMessages = MutableStateFlow(0)
+    /** Who: names (or numbers) behind the missed calls and the unread messages, newest first. */
+    val missedFrom = MutableStateFlow<List<String>>(emptyList())
+    val unreadFrom = MutableStateFlow<List<String>>(emptyList())
     val nav = MutableStateFlow<NavInfo?>(null)
     val lastMapsRaw = MutableStateFlow("")
     val log = MutableStateFlow<List<String>>(emptyList())
@@ -150,6 +153,8 @@ class Prefs(ctx: Context) {
     var sndWarn by b("sndWarn", true)
     var sndMissed by b("sndMissed", true)
     var sndWarm by b("sndWarm", true)
+    /** Engine-start sound with the opening animation (not when the bike opened the app, and never on silent). */
+    var openSound by b("openSound", true)
     /** "off", "emergency", "more". */
     var voice by s("voice", "emergency")
     var voiceName by s("voiceName", "af_heart")

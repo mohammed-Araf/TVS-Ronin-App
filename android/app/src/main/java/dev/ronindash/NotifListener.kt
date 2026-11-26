@@ -75,8 +75,9 @@ class NotifListener : NotificationListenerService() {
     /** Unread messages = message notifications still in the shade (clears when the rider reads them). */
     private fun recount() {
         val list = try { activeNotifications } catch (_: Exception) { null } ?: return
-        Bike.unreadMessages.value = list.count {
-            isMessageApp(it.packageName) && (it.notification.flags and Notification.FLAG_GROUP_SUMMARY) == 0
-        }
+        val msgs = list.filter { isMessageApp(it.packageName) && (it.notification.flags and Notification.FLAG_GROUP_SUMMARY) == 0 }
+            .sortedByDescending { it.postTime }
+        Bike.unreadMessages.value = msgs.size
+        Bike.unreadFrom.value = msgs.mapNotNull { it.notification.extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.takeIf { t -> t.isNotBlank() } }.distinct()
     }
 }

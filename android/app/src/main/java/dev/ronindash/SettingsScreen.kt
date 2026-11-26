@@ -534,6 +534,7 @@ private fun SoundsSection(prefs: Prefs) {
         Divider(); SwitchItem("Warnings", "Warning lamp, fuel low, side stand", prefs.sndWarn) { prefs.sndWarn = it }
         Divider(); SwitchItem("Missed calls and messages", "One chirp each, once you slow down", prefs.sndMissed) { prefs.sndMissed = it }
         Divider(); SwitchItem("Engine warmed up", initial = prefs.sndWarm) { prefs.sndWarm = it }
+        Divider(); SwitchItem("Engine start when the app opens", "Plays with the opening animation; silent when the phone is on silent", prefs.openSound) { prefs.openSound = it }
         Divider()
         Text("Voice", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 12.dp))
         Choice(listOf("off" to "Off", "emergency" to "Emergencies", "more" to "More"), prefs.voice) { prefs.voice = it }

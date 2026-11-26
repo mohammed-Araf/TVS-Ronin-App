@@ -1,5 +1,8 @@
 package dev.ronindash
 
+import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.graphicsLayer
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
@@ -302,7 +305,6 @@ private fun ParkedView(c: DashColors, prefs: Prefs, onReveal: (Long) -> Unit) {
     val f by Bike.fuel.collectAsState()
     val s by Bike.state.collectAsState()
     val ask by Bike.ask.collectAsState()
-    val rel by Bike.released.collectAsState()
     val turn by Bike.turn.collectAsState()
     val svc by Bike.serviceLeftKm.collectAsState()
     val warm by Bike.warmup.collectAsState()
@@ -316,6 +318,8 @@ private fun ParkedView(c: DashColors, prefs: Prefs, onReveal: (Long) -> Unit) {
             val chips = listOfNotNull("pump".takeIf { f.low }, "engine".takeIf { s.milLamp && live }, "abs".takeIf { s.absLamp && live }, "btoff".takeIf { !live })
             chips.forEach { Ic(it, c.warn, 28.dp, Modifier.padding(start = 8.dp)) }
         }
+        // Missed calls and unread messages first: they're why most riders keep the app open
+        MissedStrip(c.fg, c.dim, c.fg.copy(alpha = .1f), c.warn, hideWhenNone = true)
         if (ask != null) Row(
             Modifier.clip(RoundedCornerShape(14.dp)).background(c.fg.copy(alpha = .1f)).clickable { onReveal(30_000) }.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -356,9 +360,6 @@ private fun ParkedView(c: DashColors, prefs: Prefs, onReveal: (Long) -> Unit) {
             Ic("battery", c.dim, 24.dp); Spacer(Modifier.width(6.dp))
             CountText(if (live) s.batteryV else null, { "%.1f".format(it) }, style = big, color = c.fg); Text(" V", color = c.dim)
         }
-        val calls = rel.filter { it.call }; val msgs = rel.filter { !it.call }
-        if (calls.isNotEmpty()) Who("phone", calls, c)
-        if (msgs.isNotEmpty()) Who("chat", msgs, c)
         turn?.let { t -> Row(verticalAlignment = Alignment.CenterVertically) {
             Ic(Icons24.forDir(t.dir), c.fg, 26.dp); Spacer(Modifier.width(10.dp))
             CountText(t.meters.toDouble(), { "${it.roundToInt()}" }, style = big, color = c.fg); Text(" m", color = c.dim)
@@ -371,6 +372,8 @@ private fun ParkedView(c: DashColors, prefs: Prefs, onReveal: (Long) -> Unit) {
             CountText(kotlin.math.abs(left).toDouble(), { "${it.roundToInt()}" }, style = big, color = col)
             Text(if (left <= 0) " km over" else " km", color = c.dim)
         } }
+        Spacer(Modifier.weight(1f))
+        BikeBrightness(c.fg, c.dim, c.fg.copy(alpha = .08f), if (c.night) c.fg else MaterialTheme.colorScheme.primary)
     }
 }
 
@@ -392,14 +395,118 @@ private fun Bar(frac: Float, c: DashColors, modifier: Modifier, mark: Float? = n
     }
 }
 
+
+
+/**
+ * Missed calls and unread messages: an icon, the count, and who. Shared by the dashboard and the Ride tab, always at the top.
+ * Counts glide; names are newest first ("Amma, Ravi +2").
+ */
 @Composable
-private fun Who(icon: String, list: List<Alert>, c: DashColors) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.clip(RoundedCornerShape(50)).background(c.fg.copy(alpha = .12f)).padding(horizontal = 10.dp, vertical = 4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) { Ic(icon, c.fg, 20.dp); Text(" ${list.size}", color = c.fg, fontWeight = FontWeight.Bold) }
+fun MissedStrip(fg: Color, dim: Color, bg: Color, hot: Color, hideWhenNone: Boolean = false, modifier: Modifier = Modifier) {
+    val calls by Bike.missedCalls.collectAsState()
+    val msgs by Bike.unreadMessages.collectAsState()
+    val callers by Bike.missedFrom.collectAsState()
+    val senders by Bike.unreadFrom.collectAsState()
+    androidx.compose.animation.AnimatedVisibility(!hideWhenNone || calls + msgs > 0, modifier,
+        enter = fadeIn() + androidx.compose.animation.expandVertically(), exit = fadeOut() + androidx.compose.animation.shrinkVertically()) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MissedHalf("phone", calls, callers, fg, dim, bg, hot, Modifier.weight(1f))
+            MissedHalf("chat", msgs, senders, fg, dim, bg, hot, Modifier.weight(1f))
         }
-        Spacer(Modifier.width(10.dp))
-        Text(list.map { it.who }.distinct().joinToString(", "), color = c.fg, maxLines = 1, fontSize = 16.sp)
     }
 }
 
+@Composable
+private fun MissedHalf(icon: String, n: Int, who: List<String>, fg: Color, dim: Color, bg: Color, hot: Color, modifier: Modifier) {
+    val on = n > 0
+    val col by animateColorAsState(if (on) fg else dim, tween(500), label = "mh")
+    Row(modifier.clip(RoundedCornerShape(16.dp)).background(if (on) bg else bg.copy(alpha = bg.alpha * .4f)).padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Box {
+            Ic(icon, col, 26.dp)
+            if (on) Box(Modifier.align(Alignment.TopEnd).size(8.dp).clip(androidx.compose.foundation.shape.CircleShape).background(hot))
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            CountText(n.toDouble(), { "${it.roundToInt()}" }, style = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.SemiBold), color = col, key = icon)
+            val names = if (who.size > 2) who.take(2).joinToString(", ") + " +${who.size - 2}" else who.joinToString(", ")
+            Text(if (on) names.ifBlank { if (icon == "phone") "missed" else "unread" } else "none", color = dim, fontSize = 13.sp, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/**
+ * Bike display brightness, right on the dashboard: [Auto] [—— slider ——] 42 %.
+ * Tap Auto and the slider folds into the button, which grows to fill the row (no empty gap); tap it again and the slider slides back out.
+ * Auto = the phone's light sensor sets it. Moving the slider = your level, Auto off (kept until you tap Auto again).
+ * Changing it on the bike itself also switches Auto off for that ride.
+ */
+@Composable
+fun BikeBrightness(fg: Color, dim: Color, bg: Color, accent: Color, modifier: Modifier = Modifier) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { Prefs(ctx) }
+    val manualRide by Bike.clusterManual.collectAsState()
+    val level by Bike.clusterLevel.collectAsState()
+    val conn by Bike.conn.collectAsState()
+    val live = conn.phase == Phase.LIVE
+    var autoPref by remember { mutableStateOf(prefs.clusterBright) }
+    val auto = autoPref && !manualRide
+    var pending by remember { mutableStateOf<Float?>(null) }       // what you set, until the bike reports it back
+    LaunchedEffect(level, pending) {
+        val p = pending ?: return@LaunchedEffect
+        if (level == p.roundToInt()) pending = null else { kotlinx.coroutines.delay(4000); pending = null }
+    }
+    val shown = pending ?: (level.takeIf { it in 2..10 } ?: 6).toFloat()
+    val p by animateFloatAsState(if (auto) 0f else 1f, androidx.compose.animation.core.spring(dampingRatio = .82f, stiffness = 320f), label = "fold")
+    val view = androidx.compose.ui.platform.LocalView.current
+    fun setAuto(on: Boolean) {
+        autoPref = on
+        Bike.service?.riderAuto(on) ?: run { prefs.clusterBright = on; Bike.clusterManual.value = !on }
+        view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+    }
+    androidx.compose.foundation.layout.BoxWithConstraints(
+        modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(bg).padding(6.dp).alpha(if (live) 1f else .55f),
+    ) {
+        val full = maxWidth
+        val btn = 96.dp
+        val gap = 10.dp * p
+        val bw = full * (1 - p) + btn * p
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.width(bw).height(48.dp).clip(RoundedCornerShape(13.dp))
+                    .background(accent.copy(alpha = .16f * (1 - p)))
+                    .border(1.dp, if (auto) accent.copy(alpha = .6f) else dim.copy(alpha = .35f), RoundedCornerShape(13.dp))
+                    .clickable { setAuto(!auto) }.padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
+            ) {
+                Ic("sun", if (auto) accent else dim, 20.dp)
+                Text(" Auto", color = if (auto) accent else fg, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                if (p < .98f) Text(
+                    if (level in 2..10) "  ·  bike display ${level * 10} %" else "  ·  bike display",
+                    color = dim, maxLines = 1, softWrap = false, modifier = Modifier.alpha(1 - p),
+                )
+            }
+            if (p > .02f) {
+                Spacer(Modifier.width(gap))
+                Row(
+                    Modifier.width((full - bw - gap).coerceAtLeast(0.dp)).graphicsLayer {
+                        alpha = p; scaleX = .55f + .45f * p
+                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, .5f)   // grows out of the Auto button
+                    },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    androidx.compose.material3.Slider(
+                        value = shown, onValueChange = { pending = it.roundToInt().toFloat() }, valueRange = 2f..10f, steps = 7,
+                        onValueChangeFinished = { pending?.let { Bike.service?.riderLevel(it.roundToInt()) ?: run { prefs.clusterBright = false } }; autoPref = false },
+                        colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent,
+                            inactiveTrackColor = dim.copy(alpha = .3f), activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent),
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text("${(shown * 10).roundToInt()}%", color = fg, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                        modifier = Modifier.width(48.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                }
+            }
+        }
+    }
+}

@@ -23,7 +23,7 @@ import java.util.Locale
 class Sounds(private val ctx: Context) {
     companion object {
         val EARCONS = listOf(
-            "arrived", "connected", "disconnected", "engine_warm", "fuel_low", "ind_forgot", "ind_tick_both", "ind_tick_left", "ind_tick_right",
+            "arrived", "connected", "disconnected", "engine_start", "engine_warm", "fuel_low", "ind_forgot", "ind_tick_both", "ind_tick_left", "ind_tick_right",
             "ind_tock_both", "ind_tock_left", "ind_tock_right", "message", "missed_call", "reroute", "roundabout", "service", "speed",
             "turn_now_left", "turn_now_right", "turn_soon_left", "turn_soon_right", "turn_soon_straight", "urgent", "uturn", "warning",
         )
@@ -144,7 +144,7 @@ val SOUND_DEMO = listOf(
     "Turn right now" to listOf("turn_now_right" to 0L), "Keep straight" to listOf("turn_soon_straight" to 0L),
     "Roundabout" to listOf("roundabout" to 0L), "U-turn" to listOf("uturn" to 0L), "Re-routing" to listOf("reroute" to 0L),
     "Arrived" to listOf("arrived" to 0L), "Over the limit" to listOf("speed" to 0L), "Fuel low" to listOf("fuel_low" to 0L),
-    "Warning lamp" to listOf("warning" to 0L), "Service due" to listOf("service" to 0L), "Engine warmed up" to listOf("engine_warm" to 0L),
+    "Warning lamp" to listOf("warning" to 0L), "Service due" to listOf("service" to 0L), "Engine warmed up" to listOf("engine_warm" to 0L), "Engine start (app opening)" to listOf("engine_start" to 0L),
     "Emergency" to listOf("urgent" to 0L), "Missed call" to listOf("missed_call" to 0L), "Message" to listOf("message" to 0L),
     "Bike connected" to listOf("connected" to 0L), "Bike lost" to listOf("disconnected" to 0L),
 )

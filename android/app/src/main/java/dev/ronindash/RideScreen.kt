@@ -50,15 +50,12 @@ import androidx.compose.ui.unit.sp
 fun RideScreen(modifier: Modifier) {
     val conn by Bike.conn.collectAsState()
     val s by Bike.state.collectAsState()
-    val calls by Bike.missedCalls.collectAsState()
-    val msgs by Bike.unreadMessages.collectAsState()
     val nav by Bike.nav.collectAsState()
     val live = conn.phase == Phase.LIVE
     val f by Bike.fuel.collectAsState()
     val warm by Bike.warmup.collectAsState()
     val ask by Bike.ask.collectAsState()
     val lean by Bike.lean.collectAsState()
-    val gpsLost by Bike.gpsLost.collectAsState()
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { Prefs(ctx) }
     val dark = MaterialTheme.colorScheme.background.red < .3f
@@ -77,6 +74,13 @@ fun RideScreen(modifier: Modifier) {
             Box(Modifier.weight(1f)) { ConnPill(conn) }
             SosButton()
         }
+
+        // First thing on the page: who called, who wrote
+        MissedStrip(MaterialTheme.colorScheme.onSurface, MaterialTheme.colorScheme.onSurfaceVariant,
+            MaterialTheme.colorScheme.surfaceContainer, Color(0xFFE5484D))
+
+        BikeBrightness(MaterialTheme.colorScheme.onSurface, MaterialTheme.colorScheme.onSurfaceVariant,
+            MaterialTheme.colorScheme.surfaceContainer, MaterialTheme.colorScheme.primary)
 
         // Speed + gear
         Panel {
@@ -149,7 +153,7 @@ fun RideScreen(modifier: Modifier) {
                 }
                 Spacer(Modifier.height(8.dp))
                 Text("This trip %.1f km  ·  %.2f L  ·  ₹%.0f".format(f.tripKm, f.tripL, f.tripL * prefs.fuelPrice) +
-                    (if (f.idling) "  ·  idling" else "") + (if (gpsLost) "  ·  no GPS: bike speed" else ""),
+                    (if (f.idling) "  ·  idling" else ""),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -164,9 +168,6 @@ fun RideScreen(modifier: Modifier) {
                 trackColor = MaterialTheme.colorScheme.surfaceContainerHighest, gapSize = 0.dp, drawStopIndicator = {})
             Spacer(Modifier.height(10.dp))
             Row { Stat("Range", if (f.tankKnown) "%.0f km".format(f.rangeKm) else "–", Modifier.weight(1f)); Stat("Odometer", if ("odo" in s.unknown) "–" else "%.1f km".format(s.odoKm), Modifier.weight(1f)) }
-            Text("Range = petrol left × how you've been riding (%.1f km/l over the last ~50 km). Bike gauge: %s. The bike's own range is ignored."
-                .format(f.recentKmpl, if (live) "${s.fuelBars} of $FUEL_BARS bars" else "–"),
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
         }
 
         Panel {
@@ -186,9 +187,6 @@ fun RideScreen(modifier: Modifier) {
 
         ServiceCard()
 
-        Panel {
-            Row { Stat("Missed calls", "$calls", Modifier.weight(1f)); Stat("Unread messages", "$msgs", Modifier.weight(1f)) }
-        }
     }
 }
 
@@ -361,13 +359,11 @@ private fun WarmCard(w: WarmUp) {
     val rate = if (mins > .5) (w.nowC - w.startC) / mins else 0.0
     val left = if (rate > .3) ((w.warmC - w.nowC) / rate).toInt() else null
     Panel {
-        Text("Cold start", color = cs.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
         Text("Engine warming up", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(10.dp))
         WarmBar(w, c, Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
-        Text("Started at ${w.startC} °C. Go easy on the revs until it reaches ${w.warmC} °C" + (left?.let { ", about $it min more" } ?: "") +
-            ". You'll hear a soft chime when it's warm.", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
+        Text("${w.nowC} → ${w.warmC} °C" + (left?.let { "  ·  ~$it min" } ?: ""), style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
     }
 }
 
@@ -384,16 +380,17 @@ private fun FuelAskCard(a: FuelAsk, prefs: Prefs) {
             Column {
                 val time = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(java.util.Date(a.at))
                 Text(when {
-                    stage == "litres" -> "How many litres?"; stage == "rs" -> "How many rupees?"; stage == "pump" -> "Full tank. Litres on the pump?"
+                    stage == "litres" -> "How many litres?"; stage == "rs" -> "How many rupees?"; stage == "pump" -> "Litres on the pump?"
                     a.late -> "Filled up${if (a.station.isNotBlank()) " at ${a.station}" else ""}, $time?"
                     else -> "Filled up?"
                 }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(when {
-                    stage == "rs" -> "At ₹%.0f/L (change in Settings)".format(prefs.fuelPrice); stage == "litres" -> "As shown on the pump"
-                    stage == "pump" -> "Optional: it makes your mileage and range exact"
-                    a.late -> "Going by the fuel gauge: ${a.guess}. Correct it if you like, or just ignore this."
-                    else -> a.station.ifBlank { "Fuel gauge went up" }
-                }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val sub = when {
+                    stage == "rs" -> "₹%.0f/L".format(prefs.fuelPrice)
+                    stage == "ask" && a.late -> a.guess
+                    stage == "ask" -> a.station
+                    else -> ""
+                }
+                if (sub.isNotBlank()) Text(sub, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Spacer(Modifier.height(10.dp))

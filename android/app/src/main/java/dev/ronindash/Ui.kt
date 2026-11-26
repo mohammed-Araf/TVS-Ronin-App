@@ -53,6 +53,7 @@ object Icons24 {
         "uturn" to "M8 21V9a4 4 0 0 1 8 0v6M12.5 11.5 16 15l3.5-3.5",
         "flag" to "M5 21V4M5 4.5h11l-2 4 2 4H5",
         "battery" to "M4.5 7h13a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zM22 10.5v3",
+        "sun" to "M12 8a4 4 0 1 1 0 8a4 4 0 0 1 0-8zM12 2.5v2M12 19.5v2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M2.5 12h2M19.5 12h2M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4",
         "snow" to "M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9M9.5 4.5 12 6.5l2.5-2M9.5 19.5 12 17.5l2.5 2",
     )
     private val cache = HashMap<String, ImageVector>()

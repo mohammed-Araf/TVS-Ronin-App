@@ -68,6 +68,7 @@ fun Opening(done: () -> Unit) {
     val animOff = remember { Settings.Global.getFloat(ctx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f }
     LaunchedEffect(Unit) {
         if (animOff) { done(); return@LaunchedEffect }
+        playEngineStart(ctx)            // with the first frame: the engine catches as the gauge wakes up
         coroutineScope {
             val a = async { arc.animateTo(1f, tween(650, easing = FastOutSlowInEasing)) }
             val t = async { delay(450); ticks.animateTo(1f, tween(500)) }
@@ -139,4 +140,29 @@ fun Mark(size: androidx.compose.ui.unit.Dp, color: Color, accent: Color) {
         drawArc(accent, 180f, 120f, false, tl, sz, style = Stroke(3f * s, cap = StrokeCap.Round))
         drawLine(color, Offset(24 * s, 28 * s), Offset(33 * s, 15 * s), 2.5f * s, StrokeCap.Round)
     }
+}
+
+/** Held so the player isn't garbage-collected mid-sound (that's what cut it off when the dashboard appeared). */
+private var enginePlayer: android.media.MediaPlayer? = null
+
+/** Engine start, from the first frame of the opening. Media volume; skipped on silent/vibrate or if turned off. */
+private fun playEngineStart(ctx: android.content.Context) {
+    if (!Prefs(ctx).openSound) return
+    val am = ctx.getSystemService(android.media.AudioManager::class.java)
+    if (am?.ringerMode != android.media.AudioManager.RINGER_MODE_NORMAL) return
+    try {
+        val afd = ctx.resources.openRawResourceFd(R.raw.snd_engine_start) ?: return
+        android.media.MediaPlayer().apply {
+            setAudioAttributes(android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+            setDataSource(afd.fileDescriptor, afd.startOffset, afd.length); afd.close()
+            setOnCompletionListener { it.release(); if (enginePlayer === it) enginePlayer = null }
+            setOnErrorListener { mp, _, _ -> mp.release(); if (enginePlayer === mp) enginePlayer = null; true }
+            prepare()
+            enginePlayer?.release()
+            enginePlayer = this
+            start()
+        }
+    } catch (_: Exception) {}
 }

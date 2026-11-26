@@ -559,9 +559,14 @@ class BikeService : Service() {
         if (!has(Manifest.permission.READ_CALL_LOG)) return
         try {
             contentResolver.query(
-                CallLog.Calls.CONTENT_URI, arrayOf(CallLog.Calls._ID),
-                "${CallLog.Calls.TYPE}=? AND ${CallLog.Calls.NEW}=1", arrayOf(CallLog.Calls.MISSED_TYPE.toString()), null,
-            )?.use { Bike.missedCalls.value = it.count }
+                CallLog.Calls.CONTENT_URI, arrayOf(CallLog.Calls.CACHED_NAME, CallLog.Calls.NUMBER),
+                "${CallLog.Calls.TYPE}=? AND ${CallLog.Calls.NEW}=1", arrayOf(CallLog.Calls.MISSED_TYPE.toString()), "${CallLog.Calls.DATE} DESC",
+            )?.use { c ->
+                val who = mutableListOf<String>()
+                while (c.moveToNext()) who += (c.getString(0)?.takeIf { it.isNotBlank() } ?: c.getString(1) ?: "Unknown")
+                Bike.missedCalls.value = who.size
+                Bike.missedFrom.value = who.distinct()
+            }
         } catch (_: Exception) {}
     }
 
@@ -938,6 +943,19 @@ class BikeService : Service() {
         if (clSteady >= (if (want > cur) 2 else 6)) {
             clSteady = 0; writeBrightness(want, "light ≈ ${sensors.lux.toInt()} lux")
         }
+    }
+
+    /** The rider's own choice from the dashboard: Auto on/off (kept), or a level 2–10 (turns Auto off). */
+    fun riderAuto(on: Boolean) = h.post {
+        prefs.clusterBright = on
+        Bike.clusterManual.value = !on
+        clSteady = 0
+        Bike.log("[bright] auto ${if (on) "on" else "off"} (you)")
+    }
+
+    fun riderLevel(level: Int) = h.post {
+        prefs.clusterBright = false; Bike.clusterManual.value = true
+        if (ready) writeBrightness(level.coerceIn(2, 10), "set by you")
     }
 
     private fun writeBrightness(level: Int, why: String) {
