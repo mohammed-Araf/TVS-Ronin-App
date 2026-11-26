@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app's mark: a gauge arc and a needle (also the status icon). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="48" android:viewportHeight="48">
+    <path android:pathData="M6,36 A18,18 0 0,1 42,36" android:strokeColor="#FFFFFFFF" android:strokeAlpha="0.4"
+        android:strokeWidth="3" android:strokeLineCap="round" android:fillColor="#00000000" />
+    <path android:pathData="M6,36 A18,18 0 0,1 33,20.4" android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3.5" android:strokeLineCap="round" android:fillColor="#00000000" />
+    <path android:pathData="M24,36 L33,23" android:strokeColor="#FFFFFFFF" android:strokeWidth="3"
+        android:strokeLineCap="round" android:fillColor="#00000000" />
+</vector>

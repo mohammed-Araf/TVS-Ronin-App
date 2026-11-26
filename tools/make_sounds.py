@@ -3,6 +3,7 @@
 Ronin Dash helmet sound pack: short, soft cues instead of spoken sentences.
 
     python3 tools/make_sounds.py            # writes tools/sounds/*.wav
+    python3 tools/make_sounds.py NAME ...   # only those sounds
 
 Everything is synthesised here (no downloaded samples), so the pack is ours to ship under the app's licence.
 Stereo matters: through an intercom, LEFT cues play in the left ear and RIGHT cues in the right ear.
@@ -100,7 +101,7 @@ def sweep(f0, f1, d, tau=None):
     return out
 
 
-def make():
+def make(only=None):
     S = {}
     # --- indicators: tick in the ear on the side you're turning (hazard: both ears)
     for side, p in (("left", -.85), ("right", .85), ("both", 0)):
@@ -142,6 +143,8 @@ def make():
         t.add(soft(1400 if k % 2 == 0 else 1050, .11), at=k * .17)
     S["urgent"] = (t, .75)
     S["service"] = (Track(1.4).add(bell(N["D5"], 1.3)), .35)
+    # engine warmed up after a cold start: a calm rising chord, "you can use the revs now"
+    S["engine_warm"] = (Track(1.4).add(marimba(N["A4"], .6)).add(marimba(N["C#5"], .6), at=.12).add(bell(N["E5"], 1.0), at=.24, gain=.7), .38)
 
     # --- phone (played when you slow down; one per missed item, max 3)
     t = Track(.6)
@@ -155,12 +158,15 @@ def make():
     S["disconnected"] = (Track(1.0).add(marimba(N["G5"])).add(marimba(N["C5"]), at=.14).add(marimba(N["C4"], .6), at=.3), .42)
 
     for name, (track, peak) in S.items():
+        if only and name not in only:
+            continue
         track.write(name, peak)
-    return sorted(S)
+    return sorted(n for n in S if not only or n in only)
 
 
 if __name__ == "__main__":
-    names = make()
+    import sys
+    names = make(set(sys.argv[1:]) or None)   # e.g. make_sounds.py engine_warm   (only that one)
     total = sum(os.path.getsize(os.path.join(OUT, n + ".wav")) for n in names)
     print(f"{len(names)} sounds, {total / 1024:.0f} KB in {OUT}")
     print(" ".join(names))

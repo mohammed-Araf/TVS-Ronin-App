@@ -11,8 +11,8 @@ android {
         applicationId = "dev.ronindash"
         minSdk = 31
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.4"
+        versionCode = 5
+        versionName = "0.5"
     }
 
     buildTypes {
@@ -33,4 +33,5 @@ dependencies {
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
+    testImplementation("junit:junit:4.13.2")
 }

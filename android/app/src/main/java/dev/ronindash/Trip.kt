@@ -8,42 +8,16 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.sqrt
-
-/**
- * Fuel model for the Ronin (225 cc), from real-world figures:
- *   steady 60 km/h → 44 km/l, steady 120 km/h → 32 km/l.
- * Then corrected by RPM: revving higher than the top-gear RPM for that speed (lower gear, hard acceleration)
- * burns more. Idle burns ~0.15 L/h. It's an estimate; fill-up calibration can refine it later.
- */
-object Mileage {
-    const val IDLE_LPH = 0.15
-    const val DEFAULT_RPM_PER_KMH = 55.0 // top-gear guess until learned from the rider's own data
-
-    fun kmplAt(v: Double): Double = when {
-        v >= 60 -> 44 - (v - 60) * 0.2        // 120 → 32
-        v >= 30 -> 44 - (60 - v) * 0.1        // 30 → 41 (light stop-go)
-        else -> 41 - (30 - v) * 0.3           // 5 → 33.5 (crawling in traffic)
-    }.coerceAtLeast(15.0)
-
-    /** Litres used over dtS seconds. rpmPerKmhTop = RPM ÷ speed in top gear. accel in m/s². */
-    fun litres(vKmh: Double, rpm: Int, accel: Double, rpmPerKmhTop: Double, dtS: Double): Double {
-        if (vKmh < 3) return if (rpm > 500) IDLE_LPH * dtS / 3600 * (rpm / 1500.0).coerceIn(0.8, 3.0) else 0.0
-        var l = (vKmh * dtS / 3600) / kmplAt(vKmh)
-        if (rpm > 500) l *= sqrt((rpm / vKmh) / rpmPerKmhTop).coerceIn(0.85, 1.8)
-        if (accel > 0.3) l *= 1 + 0.25 * accel.coerceAtMost(3.0)
-        return l
-    }
-}
 
 data class TripPoint(
     val t: Long, val lat: Double, val lon: Double, val alt: Double,
     val kmh: Double, val rpm: Int, val gear: Int, val fuelL: Double,
 )
 
-/** Records one ride: GPS + bike data once a second, fuel estimate integrated as we go. */
-class TripRecorder(private val ctx: Context) {
+/** Records one ride: GPS + bike data once a second; distance and fuel come from [FuelModel] (GPS distance, fuel flow). */
+class TripRecorder(private val ctx: Context, private val onBegin: () -> Unit = {}) {
     private val prefs = Prefs(ctx)
     var active = false; private set
     private var startMs = 0L
@@ -61,14 +35,13 @@ class TripRecorder(private val ctx: Context) {
     private var breaks = 0
     private var breakS = 0.0
     private var lastEngineOnMs = 0L
-    private val ratios = ArrayList<Double>()
     private val pts = ArrayList<TripPoint>()
     private var file: File? = null
 
     private fun dir() = File(ctx.getExternalFilesDir(null), "trips").apply { mkdirs() }
 
-    /** Called about once a second by the service. */
-    fun sample(s: BikeState, loc: Location?, live: Boolean) {
+    /** Called about once a second by the service, with this step's distance (km) and fuel (L) from the fuel model. */
+    fun sample(s: BikeState, loc: Location?, live: Boolean, stepKm: Double, stepL: Double) {
         val now = System.currentTimeMillis()
         val freshLoc = loc != null && now - loc.time < 5000
         val kmh = if (live && s.lastFrameMs > now - 5000) s.speed.toDouble() else if (freshLoc) loc!!.speed * 3.6 else 0.0
@@ -84,10 +57,8 @@ class TripRecorder(private val ctx: Context) {
             lastMoveMs = now
         }
         val dt = if (lastT == 0L) 1.0 else ((now - lastT) / 1000.0).coerceIn(0.2, 5.0)
-        val accel = (kmh - lastKmh) / 3.6 / dt
-        if (kmh > 35 && s.rpm > 1000) ratios.add(s.rpm / kmh)
-        fuelL += Mileage.litres(kmh, if (live) s.rpm else 0, accel, rpmTop(), dt)
-        distM += kmh / 3.6 * dt
+        fuelL += stepL
+        distM += stepKm * 1000
         if (moving) movingS += dt
         maxKmh = max(maxKmh, kmh); maxRpm = max(maxRpm, s.rpm)
         lastT = now; lastKmh = kmh
@@ -107,17 +78,12 @@ class TripRecorder(private val ctx: Context) {
 
     private fun begin(s: BikeState, now: Long) {
         active = true; startMs = now; lastMoveMs = now; lastT = 0; fuelL = 0.0; distM = 0.0; maxKmh = 0.0; maxRpm = 0
-        movingS = 0.0; ratios.clear(); pts.clear(); lastLoc = null; breaks = 0; breakS = 0.0
+        movingS = 0.0; pts.clear(); lastLoc = null; breaks = 0; breakS = 0.0
         startOdo = s.odoKm; startFuelPct = if (s.lastFrameMs > 0) s.fuelPct else -1
         val id = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now))
         file = File(dir(), "trip_$id.csv").apply { writeText("t,lat,lon,alt,kmh,rpm,gear,fuelL\n") }
         Bike.log("[trip] started")
-    }
-
-    private fun rpmTop(): Double {
-        if (ratios.size < 60) return prefs.rpmPerKmhTop
-        val sorted = ratios.sorted()
-        return sorted[sorted.size / 10]
+        onBegin()
     }
 
     /** Ends the trip and writes its summary next to the points file. */
@@ -125,27 +91,65 @@ class TripRecorder(private val ctx: Context) {
         if (!active) return
         active = false
         val f = file ?: return
-        val odoKm = if (startOdo > 0 && s.odoKm > startOdo) s.odoKm - startOdo else 0.0
-        val km = if (odoKm > 0.1) odoKm else distM / 1000
+        // Distance is GPS (fuel model). The odometer (1 km steps, reads high) is the long-run check: if they disagree by more
+        // than 3 % over 20+ km, the odometer ÷ the learned speedometer error wins for this ride, and it shows in Test & log.
+        val odoKm = if (startOdo > 0 && s.odoKm > startOdo) (s.odoKm - startOdo) / prefs.speedoK else 0.0
+        var km = distM / 1000
+        if (odoKm > 20 && abs(km - odoKm) / odoKm > .03) {
+            Bike.odoVsGps.value = "Trip: GPS %.1f km vs odometer %.1f km (corrected) → odometer used".format(km, odoKm)
+            km = odoKm
+        } else if (odoKm > 20) Bike.odoVsGps.value = "Trip: GPS %.1f km, odometer %.1f km: agree".format(km, odoKm)
         if (km < 0.3) { f.delete(); Bike.log("[trip] too short, discarded"); return }
-        if (ratios.size >= 60) prefs.rpmPerKmhTop = rpmTop()
         val gaugeL = if (startFuelPct > 0 && s.fuelPct in 1 until startFuelPct) (startFuelPct - s.fuelPct) / 100.0 * prefs.tankL else 0.0
         val sum = JSONObject()
             .put("start", startMs).put("end", lastMoveMs) // the ride ended when we last moved, not when we noticed
             .put("breaks", breaks).put("breakS", breakS)
             .put("km", km).put("movingS", movingS).put("maxKmh", maxKmh).put("maxRpm", maxRpm)
             .put("fuelL", fuelL).put("kmpl", if (fuelL > 0) km / fuelL else 0.0)
-            .put("gaugeL", gaugeL).put("points", pts.size)
+            .put("gaugeL", gaugeL).put("points", (f.readLines().size - 1).coerceAtLeast(0))
             .put("climbM", climb())
+            .put("leanL", Bike.lean.value.maxLeft).put("leanR", Bike.lean.value.maxRight)
         File(f.path.replace(".csv", ".json")).writeText(sum.toString())
         Bike.log("[trip] saved %.1f km, est %.1f km/l".format(km, if (fuelL > 0) km / fuelL else 0.0))
         Bike.tripsChanged.value++
     }
 
     private fun climb(): Double {
+        val alts = file?.takeIf { it.exists() }?.readLines()?.drop(1)?.mapNotNull { it.split(",").getOrNull(3)?.toDoubleOrNull() } ?: return 0.0
         var up = 0.0
-        for (i in 1 until pts.size) { val d = pts[i].alt - pts[i - 1].alt; if (d in 1.0..30.0) up += d }
+        for (i in 1 until alts.size) { val d = alts[i] - alts[i - 1]; if (d in 1.0..30.0) up += d }
         return up
+    }
+
+    // ---- the service stops while the bike is off (nothing runs then), so an open ride is parked on disk and picked up again
+    private fun stateFile() = File(dir(), "active.json")
+    private var lastOdo = 0.0
+
+    /** Bike off: write the open ride to disk (a fuel or tea stop is a break, not the end). */
+    fun park(s: BikeState) {
+        if (!active) return
+        lastOdo = s.odoKm
+        stateFile().writeText(JSONObject().put("file", file?.path).put("start", startMs).put("lastMove", lastMoveMs)
+            .put("fuelL", fuelL).put("distM", distM).put("maxKmh", maxKmh).put("maxRpm", maxRpm).put("movingS", movingS)
+            .put("startOdo", startOdo).put("startFuel", startFuelPct).put("breaks", breaks).put("breakS", breakS)
+            .put("lastOdo", lastOdo).toString())
+        active = false
+        Bike.log("[trip] parked (bike off)")
+    }
+
+    /** Service start: continue a parked ride if we're back within 45 min, otherwise close it at its last movement. */
+    fun resume() {
+        val f = stateFile(); if (!f.exists()) return
+        try {
+            val j = JSONObject(f.readText()); f.delete()
+            file = File(j.getString("file")); startMs = j.getLong("start"); lastMoveMs = j.getLong("lastMove")
+            fuelL = j.getDouble("fuelL"); distM = j.getDouble("distM"); maxKmh = j.getDouble("maxKmh"); maxRpm = j.getInt("maxRpm")
+            movingS = j.getDouble("movingS"); startOdo = j.getDouble("startOdo"); startFuelPct = j.getInt("startFuel")
+            breaks = j.getInt("breaks"); breakS = j.getDouble("breakS"); lastOdo = j.getDouble("lastOdo"); lastT = 0
+            active = true
+            if (System.currentTimeMillis() - lastMoveMs > 45 * 60_000L) finish(BikeState(odoKm = lastOdo))
+            else Bike.log("[trip] continuing the ride from before the stop")
+        } catch (e: Exception) { Bike.log("[trip] couldn't resume: ${e.message}") }
     }
 
     /** True while we're inside a ride and moved in the last 2 minutes (keeps GPS on only when useful). */

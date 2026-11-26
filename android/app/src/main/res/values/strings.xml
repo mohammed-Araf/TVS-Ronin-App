@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sc_up">Brighter</string>
+    <string name="sc_up_long">Bike display brighter</string>
+    <string name="sc_down">Dimmer</string>
+    <string name="sc_down_long">Bike display dimmer</string>
+</resources>

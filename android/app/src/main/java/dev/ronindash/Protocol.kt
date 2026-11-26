@@ -127,6 +127,12 @@ data class BikeState(
     val engineTempC: Int? = null, val intakeC: Int? = null, val batteryV: Double? = null,
     val tripAKm: Double = 0.0, val tripBKm: Double = 0.0, val dteKm: Int = 0,
     val frames: Int = 0, val zeroFrames: Int = 0, val lastFrameMs: Long = 0,
+    /** Bike display brightness 2–10 as the bike reports it (0x11 byte 17, high nibble); 0 = not seen yet. */
+    val clusterLevel: Int = 0,
+    /** Live byte 11 = 0x80: the bike is switching off (the link drops ~11 s later). */
+    val shuttingDown: Boolean = false,
+    /** Fields the data guard has no good value for (shown as "–", never a made-up number). */
+    val unknown: Set<String> = emptySet(),
 ) {
     /** Live byte 6 is the fuel gauge in BARS, not a percent (it read 9 with a full tank all day; the official app shows that as
      *  "9 %, low fuel", a bug). Manual: 1 bar ≈ 3.2 L left, 0 bars ≈ 2 L. FUEL_BARS = bars on a full gauge (9). */
@@ -138,12 +144,13 @@ data class BikeState(
             0x10 -> copy(
                 speed = u[2], odoKm = ((u[3] shl 16) or (u[4] shl 8) or u[5]) / 10.0, fuelBars = u[6],
                 avgSpeed = u[7], topSpeed = u[9], throttlePct = u[10] / 2, rpm = (u[16] shl 8) or u[17], button = u[11] and 0x07,
+                shuttingDown = u[11] == 0x80,
             )
             0x11 -> copy(
                 gear = u[5] and 0x0F, clutch = bit(u[3], 0x01), sideStand = bit(u[3], 0x40),
                 neutral = bit(u[13], 0x01), leftInd = bit(u[13], 0x02), rightInd = bit(u[13], 0x04),
                 highBeam = bit(u[13], 0x08), milLamp = bit(u[13], 0x10), absLamp = bit(u[13], 0x20),
-                engineOn = bit(u[15], 0x40), rideMode = u[17] and 0x0F,
+                engineOn = bit(u[15], 0x40), rideMode = u[17] and 0x0F, clusterLevel = u[17] shr 4,
             )
             0x12 -> copy(rangeKm = Protocol.s16(u[3], u[4]), tripKm = Protocol.s16(u[8], u[9]) / 10.0)
             0x18 -> copy(intakeC = u[7] - 40, engineTempC = u[8] - 40, batteryV = u[11] / 10.0)
@@ -155,5 +162,23 @@ data class BikeState(
         }
     }
 
-    val gearLabel: String get() = when { neutral || gear == 0 -> "N"; gear in 1..6 -> "$gear"; else -> "–" }
+    val gearLabel: String get() = when { "gear" in unknown -> "–"; neutral || gear == 0 -> "N"; gear in 1..6 -> "$gear"; else -> "–" }
+
+    /** Overwrite decoded values with the data guard's verdicts (null = unknown). */
+    fun guarded(v: Map<String, Double?>): BikeState {
+        var s = this
+        val unk = unknown.toMutableSet()
+        for ((k, x) in v) {
+            if (x == null) { unk += k; continue }
+            unk -= k
+            s = when (k) {
+                "speed" -> s.copy(speed = x.toInt()); "rpm" -> s.copy(rpm = x.toInt()); "odo" -> s.copy(odoKm = x)
+                "fuel" -> s.copy(fuelBars = x.toInt()); "gear" -> s.copy(gear = x.toInt())
+                "temp" -> s.copy(engineTempC = x.toInt()); "intake" -> s.copy(intakeC = x.toInt()); "batt" -> s.copy(batteryV = x)
+                else -> s
+            }
+        }
+        return s.copy(unknown = unk,
+            engineTempC = if ("temp" in unk) null else s.engineTempC, batteryV = if ("batt" in unk) null else s.batteryV)
+    }
 }

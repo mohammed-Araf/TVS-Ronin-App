@@ -95,6 +95,7 @@ fun TestScreen(modifier: Modifier) {
 
     Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         ConnPill(conn)
+        Diagnostics()
         androidx.compose.animation.AnimatedContent(
             targetState = idx,
             transitionSpec = {
@@ -148,5 +149,33 @@ fun TestScreen(modifier: Modifier) {
                     color = if ("[test]" in line || "[button]" in line) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
             }
         }
+    }
+}
+
+/** Health line for bike tests: bad data from the bike, odometer vs GPS, memory, battery per ride, Android's bike link. */
+@Composable
+private fun Diagnostics() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val failing by Bike.guardFailing.collectAsState()
+    val odo by Bike.odoVsGps.collectAsState()
+    val batt by Bike.rideBatteryUsed.collectAsState()
+    var memMb by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val rt = Runtime.getRuntime()
+            memMb = (((rt.totalMemory() - rt.freeMemory()) + android.os.Debug.getNativeHeapAllocatedSize()) / 1_048_576).toInt()
+            delay(3000)
+        }
+    }
+    val assoc = remember { CompanionLink.isAssociated(ctx) }
+    val warn = androidx.compose.ui.graphics.Color(0xFFE5484D)
+    Column {
+        if (failing.isNotEmpty()) Text("Bike data looks wrong: ${failing.joinToString()}", color = warn, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+        Text(buildList {
+            add("Memory $memMb MB")
+            batt?.let { add("battery this ride $it%") }
+            add(if (assoc) "Android wakes the app" else "not linked to Android (Settings → Bike)")
+        }.joinToString("  ·  "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (odo.isNotBlank()) Text(odo, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

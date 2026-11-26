@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Assistants and the launcher can change ONLY the bike display brightness. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="bright_up" android:enabled="true" android:icon="@drawable/ic_launcher_fg"
+        android:shortcutShortLabel="@string/sc_up" android:shortcutLongLabel="@string/sc_up_long">
+        <intent android:action="dev.ronindash.action.SET_BIKE_BRIGHTNESS"
+            android:targetPackage="dev.ronindash" android:targetClass="dev.ronindash.BrightnessActivity">
+            <extra android:name="level" android:value="up" />
+        </intent>
+    </shortcut>
+    <shortcut android:shortcutId="bright_down" android:enabled="true" android:icon="@drawable/ic_launcher_fg"
+        android:shortcutShortLabel="@string/sc_down" android:shortcutLongLabel="@string/sc_down_long">
+        <intent android:action="dev.ronindash.action.SET_BIKE_BRIGHTNESS"
+            android:targetPackage="dev.ronindash" android:targetClass="dev.ronindash.BrightnessActivity">
+            <extra android:name="level" android:value="down" />
+        </intent>
+    </shortcut>
+</shortcuts>

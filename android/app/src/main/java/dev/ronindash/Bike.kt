@@ -35,6 +35,36 @@ object Bike {
     val theme = MutableStateFlow("system")
     val accent = MutableStateFlow(0)
 
+    // ---- riding (computed in BikeService from guarded bike data, shown by the screens)
+    /** Which screen the bike picked: parked / riding / fast. Never chosen by a button. */
+    val mode = MutableStateFlow(RideMode.PARK)
+    val fuel = MutableStateFlow(FuelView())
+    /** "Filled up?" card (null = nothing to ask). */
+    val ask = MutableStateFlow<FuelAsk?>(null)
+    /** Engine warm-up after a cold start (null = warm, or the engine is off). */
+    val warmup = MutableStateFlow<WarmUp?>(null)
+    val hazard = MutableStateFlow(false)
+    /** Side stand down while moving (2 agreeing readings): the emergency screen. */
+    val standAlarm = MutableStateFlow(false)
+    /** Next turn, shown about 36 s before it (null = nothing close). */
+    val turn = MutableStateFlow<Turn?>(null)
+    val lean = MutableStateFlow(Lean())
+    /** Calls and messages held while riding fast, released when slow. */
+    val released = MutableStateFlow<List<Alert>>(emptyList())
+    /** Bike display brightness 2–10 as the bike reports it; clMan = the rider (or an assistant) chose it this ride. */
+    val clusterLevel = MutableStateFlow(0)
+    val clusterManual = MutableStateFlow(false)
+    /** Fields the data guard keeps rejecting (Test & log only, never a popup). */
+    val guardFailing = MutableStateFlow<List<String>>(emptyList())
+    val gpsLost = MutableStateFlow(false)
+    /** The phone is on the mount (proximity clear, upright, not dark-in-a-pocket), from the service's short sensor check. */
+    val mounted = MutableStateFlow(false)
+    /** Phone battery % used this ride (Test & log). */
+    val rideBatteryUsed = MutableStateFlow<Int?>(null)
+    val odoVsGps = MutableStateFlow("")
+    /** The bike switched off: a dashboard that opened itself closes again. */
+    val closeDash = MutableStateFlow(false)
+
     @Volatile var service: BikeService? = null
 
     private val ts = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
@@ -48,9 +78,109 @@ object Bike {
     }
 }
 
+enum class RideMode { PARK, RIDE, FAST }
+
+data class FuelView(
+    val tankL: Double = 0.0, val tankKnown: Boolean = false, val rangeKm: Double = 0.0, val recentKmpl: Double = 41.6,
+    val liveKmpl: Double = 0.0, val lph: Double = 0.0, val moving: Boolean = false, val idling: Boolean = false,
+    val tripKm: Double = 0.0, val tripL: Double = 0.0, val tripMovingS: Int = 0, val low: Boolean = false,
+) { val tripKmpl get() = if (tripL > 0.005) tripKm / tripL else 0.0 }
+
+/** stage: "ask" → "litres" / "rs" / "pump". late = already guessed from the fuel gauge, waits until stopped. */
+data class FuelAsk(val stage: String = "ask", val at: Long = System.currentTimeMillis(), val station: String = "",
+    val late: Boolean = false, val guess: String = "")
+
+/** startC = engine temperature when it started, nowC = now, warmC = where it counts as warm. */
+data class WarmUp(val startC: Int, val nowC: Int, val warmC: Int, val sinceMs: Long) {
+    val frac: Float get() = if (warmC <= startC) 1f else ((nowC - startC).toFloat() / (warmC - startC)).coerceIn(0f, 1f)
+}
+
+/** dir as NavParser's Dir; meters counting down; angle = where the turn is relative to the heading (compass). */
+data class Turn(val dir: Dir, val meters: Int, val angle: Float, val now: Boolean)
+
+data class Lean(val now: Int = 0, val maxLeft: Int = 0, val maxRight: Int = 0)
+
+data class Alert(val call: Boolean, val who: String, val at: Long = System.currentTimeMillis())
+
 /** Simple settings store. */
 class Prefs(ctx: Context) {
     private val p = ctx.getSharedPreferences("ronin", Context.MODE_PRIVATE)
+    private fun b(k: String, d: Boolean) = object : kotlin.properties.ReadWriteProperty<Any?, Boolean> {
+        override fun getValue(t: Any?, pr: kotlin.reflect.KProperty<*>) = p.getBoolean(k, d)
+        override fun setValue(t: Any?, pr: kotlin.reflect.KProperty<*>, value: Boolean) = p.edit().putBoolean(k, value).apply()
+    }
+    private fun i(k: String, d: Int) = object : kotlin.properties.ReadWriteProperty<Any?, Int> {
+        override fun getValue(t: Any?, pr: kotlin.reflect.KProperty<*>) = p.getInt(k, d)
+        override fun setValue(t: Any?, pr: kotlin.reflect.KProperty<*>, value: Int) = p.edit().putInt(k, value).apply()
+    }
+    private fun s(k: String, d: String) = object : kotlin.properties.ReadWriteProperty<Any?, String> {
+        override fun getValue(t: Any?, pr: kotlin.reflect.KProperty<*>) = p.getString(k, d) ?: d
+        override fun setValue(t: Any?, pr: kotlin.reflect.KProperty<*>, value: String) = p.edit().putString(k, value).apply()
+    }
+    private fun d(k: String, d: Double) = object : kotlin.properties.ReadWriteProperty<Any?, Double> {
+        override fun getValue(t: Any?, pr: kotlin.reflect.KProperty<*>) = java.lang.Double.longBitsToDouble(p.getLong(k, d.toRawBits()))
+        override fun setValue(t: Any?, pr: kotlin.reflect.KProperty<*>, value: Double) = p.edit().putLong(k, value.toRawBits()).apply()
+    }
+
+    // ---- first-time setup + companion device
+    var setupDone by b("setupDone", false)
+    /** CompanionDeviceManager association id for the bike (-1 = not associated yet). */
+    var associationId by i("assocId", -1)
+
+    // ---- riding screens, screen and battery
+    var fastKmh by i("fastKmh", 70)
+    var fightSun by b("fightSun", false)
+    var autoOpen by b("autoOpen", true)
+    var clusterBright by b("clusterBright", true)
+    var agentBright by b("agentBright", true)
+    /** Night panel: "off", "night" (sunset to sunrise), "always". */
+    var night by s("night", "night")
+    /** "accent", "red", "amber", "green", "white". */
+    var nightGlow by s("nightGlow", "accent")
+    var nightBright by i("nightBright", 70)
+    /** While riding show: "mileage", "speed", "nothing". */
+    var nightShow by s("nightShow", "mileage")
+    var nightTurns by b("nightTurns", true)
+
+    // ---- helmet sounds
+    var sndInd by b("sndInd", true)
+    var sndTurns by b("sndTurns", true)
+    var sayTurns by b("sayTurns", false)
+    var sndSpeed by b("sndSpeed", true)
+    var sndWarn by b("sndWarn", true)
+    var sndMissed by b("sndMissed", true)
+    var sndWarm by b("sndWarm", true)
+    /** "off", "emergency", "more". */
+    var voice by s("voice", "emergency")
+    var voiceName by s("voiceName", "af_heart")
+
+    // ---- calls and messages while riding
+    var holdAlerts by b("holdAlerts", true)
+    var slowKmh by i("slowKmh", 20)
+
+    // ---- fuel model (learned per bike)
+    /** Fuel model correction from full-to-full fills (1 = the stock model). */
+    var fuelCal by d("fuelCal", 1.0)
+    var fulls by i("fulls", 0)
+    /** Recent riding, distance and fuel weighted over the last ~50 km (kept across rides). */
+    var recKm by d("recKm", 50.0)
+    var recL by d("recL", 50.0 / 41.6)
+    /** Our petrol-left count; < 0 = unknown until the first fill or a gauge reading. */
+    var tankLeftL by d("tankLeft", -1.0)
+    /** Uncalibrated model litres since the last known full tank, and litres poured since then (partial fills). */
+    var burnRaw by d("burnRaw", 0.0)
+    var poured by d("poured", 0.0)
+    var fullKnown by b("fullKnown", false)
+    /** Bike speedometer ÷ GPS speed, learned on steady stretches (reads ~5 % high). */
+    var speedoK by d("speedoK", 1.0)
+    /** Fuel stations the rider filled at: "lat,lon;lat,lon". */
+    var stations by s("stations", "")
+    /** Fuel gauge bars when the bike last went off, to spot a fill while it was parked. */
+    var lastBars by i("lastBars", -1)
+
+    // ---- warm-up
+    /** Engine temperature at which the engine counts as warm (°C). */
+    var warmC by i("warmC", 60)
 
     var mac: String?
         get() = p.getString("mac", null)
@@ -80,15 +210,9 @@ class Prefs(ctx: Context) {
     var vaFeedback: Boolean
         get() = p.getBoolean("vaFeedback", true)
         set(v) = p.edit().putBoolean("vaFeedback", v).apply()
-    var autoStart: Boolean
-        get() = p.getBoolean("autoStart", true)
-        set(v) = p.edit().putBoolean("autoStart", v).apply()
     var fileLog: Boolean
         get() = p.getBoolean("fileLog", true)
         set(v) = p.edit().putBoolean("fileLog", v).apply()
-    var rpmPerKmhTop: Double
-        get() = p.getFloat("rpmTop", Mileage.DEFAULT_RPM_PER_KMH.toFloat()).toDouble()
-        set(v) = p.edit().putFloat("rpmTop", v.toFloat()).apply()
     var tankL: Double
         get() = p.getFloat("tankL", 14f).toDouble()
         set(v) = p.edit().putFloat("tankL", v.toFloat()).apply()
@@ -119,13 +243,14 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("screenOn", true)
         set(v) = p.edit().putBoolean("screenOn", v).apply()
     var speedAlert: Boolean
-        get() = p.getBoolean("speedAlert", false)
+        get() = p.getBoolean("speedAlert", true)
         set(v) = p.edit().putBoolean("speedAlert", v).apply()
     var speedLimit: Int
         get() = p.getInt("speedLimit", 80)
         set(v) = p.edit().putInt("speedLimit", v).apply()
+    /** Also vibrate the phone (the alert itself is two pings in the helmet). */
     var speedBeep: Boolean
-        get() = p.getBoolean("speedBeep", true)
+        get() = p.getBoolean("speedBeep", false)
         set(v) = p.edit().putBoolean("speedBeep", v).apply()
     /** Also send the limit to the cluster's own overspeed warning (status byte 3). */
     var clusterOverspeed: Boolean

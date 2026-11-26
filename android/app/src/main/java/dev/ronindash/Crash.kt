@@ -33,7 +33,11 @@ import kotlin.math.sqrt
  * A 30 s countdown with alarm lets the rider cancel (phone button or any bike button) before SMS go out.
  */
 @SuppressLint("MissingPermission")
-class CrashGuard(private val ctx: Context, private val h: Handler, private val send: (String, ByteArray) -> Unit) : SensorEventListener {
+class CrashGuard(
+    private val ctx: Context, private val h: Handler, private val send: (String, ByteArray) -> Unit,
+    /** Helmet: an earcon and (Voice setting allowing) a fixed phrase. */
+    private val cue: (String?, String) -> Unit = { _, _ -> },
+) : SensorEventListener {
     private val prefs = Prefs(ctx)
     private val sm = ctx.getSystemService(SensorManager::class.java)
     private var listening = false
@@ -90,7 +94,7 @@ class CrashGuard(private val ctx: Context, private val h: Handler, private val s
 
     // ------------------------------------------------------------ countdown
 
-    fun trigger(reason: String) {
+    fun trigger(reason: String, words: String = "Crash detected. Hold the I button if you're ok") {
         val now = System.currentTimeMillis()
         if (Bike.sos.value != null || now < cooldownUntil) return
         cooldownUntil = now + 120_000
@@ -98,7 +102,8 @@ class CrashGuard(private val ctx: Context, private val h: Handler, private val s
         Bike.sos.value = COUNTDOWN
         Bike.log("[sos] countdown: $reason")
         alarm(true)
-        send("sos-ask", Protocol.text("CRASH? PRESS I"))
+        cue("urgent", words)
+        send("sos-ask", Protocol.text("CRASH? HOLD I"))
         showAlert()
         h.postDelayed(tick, 1000)
     }
@@ -107,6 +112,7 @@ class CrashGuard(private val ctx: Context, private val h: Handler, private val s
         override fun run() {
             val left = Bike.sos.value ?: return
             if (left <= 1) { sendNow(); return }
+            if (left - 1 == 10) cue(null, "Sending SOS in ten seconds")
             Bike.sos.value = left - 1
             h.postDelayed(this, 1000)
         }
@@ -143,6 +149,7 @@ class CrashGuard(private val ctx: Context, private val h: Handler, private val s
             }
         } else Bike.log("[sos] SMS permission missing!")
         send("sos-sent", Protocol.text("SOS SENT"))
+        cue(null, "SOS sent")
         if (prefs.sosCall && ctx.checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
             h.postDelayed({
                 try {

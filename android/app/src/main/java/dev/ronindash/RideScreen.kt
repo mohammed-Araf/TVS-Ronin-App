@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,13 +54,19 @@ fun RideScreen(modifier: Modifier) {
     val msgs by Bike.unreadMessages.collectAsState()
     val nav by Bike.nav.collectAsState()
     val live = conn.phase == Phase.LIVE
-    val tripKm by Bike.liveTripKm.collectAsState()
-    val tripKmpl by Bike.liveTripKmpl.collectAsState()
+    val f by Bike.fuel.collectAsState()
+    val warm by Bike.warmup.collectAsState()
+    val ask by Bike.ask.collectAsState()
+    val lean by Bike.lean.collectAsState()
+    val gpsLost by Bike.gpsLost.collectAsState()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { Prefs(ctx) }
+    val dark = MaterialTheme.colorScheme.background.red < .3f
 
     // Smoothly animated values (the bike only sends each frame type about once a second).
     val rpmFrac by animateFloatAsState(if (live) (s.rpm / 9000f).coerceIn(0f, 1f) else 0f, spring(stiffness = Spring.StiffnessLow), label = "rpm")
     val rpm by animateIntAsState(if (live) s.rpm else 0, tween(700), label = "rpmN")
-    val fuelFrac by animateFloatAsState(s.fuelPct / 100f, tween(900), label = "fuel")
+    val fuelFrac by animateFloatAsState(if (f.tankKnown) (f.tankL / prefs.tankL).toFloat().coerceIn(0f, 1f) else 0f, tween(900), label = "fuel")
     val thrFrac by animateFloatAsState(if (live) (s.throttlePct / 100f).coerceIn(0f, 1f) else 0f, tween(250), label = "thr")
 
     Column(
@@ -75,7 +82,7 @@ fun RideScreen(modifier: Modifier) {
         Panel {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    if (live) RollingNumber(s.speed, fontSize = 84.sp)
+                    if (live && "speed" !in s.unknown) RollingNumber(s.speed, fontSize = 84.sp)
                     else Text("--", fontSize = 84.sp, fontWeight = FontWeight.SemiBold, lineHeight = 84.sp)
                     Text("km/h", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -95,7 +102,7 @@ fun RideScreen(modifier: Modifier) {
                 }
             }
             Spacer(Modifier.height(12.dp))
-            Label("RPM", "$rpm")
+            Label("RPM", if ("rpm" in s.unknown) "–" else "$rpm")
             LinearProgressIndicator(progress = { rpmFrac }, modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape),
                 color = lerpColor(MaterialTheme.colorScheme.primary, Color(0xFFE5484D), ((rpmFrac - 0.7f) / 0.3f).coerceIn(0f, 1f)),
                 trackColor = MaterialTheme.colorScheme.surfaceContainerHighest, gapSize = 0.dp, drawStopIndicator = {})
@@ -107,20 +114,59 @@ fun RideScreen(modifier: Modifier) {
 
         Telltales(s, live)
 
-        Appear(tripKm > 0) {
-            Panel { Row { Stat("This trip", "%.1f km".format(tripKm), Modifier.weight(1f)); Stat("Est. mileage", "%.0f km/l".format(tripKmpl), Modifier.weight(1f)) } }
+        Appear(warm != null) { warm?.let { WarmCard(it) } }
+
+        Appear(ask != null) { ask?.let { FuelAskCard(it, prefs) } }
+
+        // Live mileage: km/l now (smoothed), trip average, a bar for better/worse than average, idling L/h, trip litres and ₹
+        Appear(f.tripKm > 0 || f.moving || f.idling) {
+            Panel {
+                Row {
+                    Column(Modifier.weight(1f)) {
+                        Text("Mileage now", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+                        val mc by animateColorAsState(if (f.moving) mileColor(f.liveKmpl, dark) else MaterialTheme.colorScheme.onSurface, tween(1600), label = "mc")
+                        when {
+                            f.moving -> CountText(f.liveKmpl, { "%.0f km/l".format(it) }, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold), color = mc, key = "kmpl")
+                            f.idling -> CountText(f.lph, { "%.2f L/h".format(it) }, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold), key = "lph")
+                            else -> Text("–", style = MaterialTheme.typography.titleLarge)
+                        }
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text("Trip average", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+                        CountText(f.tripKmpl.takeIf { it > 0 }, { "%.1f km/l".format(it) }, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold))
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                val pos by animateFloatAsState(if (f.moving && f.tripKmpl > 0) ((f.liveKmpl / f.tripKmpl) - .5).toFloat().coerceIn(0f, 1f) else .5f, tween(900), label = "mpos")
+                Box(Modifier.fillMaxWidth().height(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
+                    Box(Modifier.fillMaxWidth(.5f).height(8.dp)) { Box(Modifier.align(Alignment.CenterEnd).width(2.dp).height(8.dp).background(MaterialTheme.colorScheme.onSurfaceVariant)) }
+                    Box(Modifier.fillMaxWidth(pos).height(8.dp)) { Box(Modifier.align(Alignment.CenterEnd).size(8.dp).clip(CircleShape).background(if (f.moving) mileColor(f.liveKmpl, dark) else MaterialTheme.colorScheme.onSurfaceVariant)) }
+                }
+                Row(Modifier.fillMaxWidth().padding(top = 2.dp)) {
+                    Text("worse", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("trip average", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("better", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("This trip %.1f km  ·  %.2f L  ·  ₹%.0f".format(f.tripKm, f.tripL, f.tripL * prefs.fuelPrice) +
+                    (if (f.idling) "  ·  idling" else "") + (if (gpsLost) "  ·  no GPS: bike speed" else ""),
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
 
         Appear(nav != null) { nav?.let { NavCard(it) } }
 
-        // Fuel and range
+        // Fuel: our own count of petrol left (fills minus fuel burned). Range = that × your mileage lately. The bike's DTE is never used.
         Panel {
-            Label("Fuel", if (live) "${s.fuelBars} of $FUEL_BARS bars" else "–")
+            Label("Fuel", if (f.tankKnown) "%.1f L".format(f.tankL) else "–")
             LinearProgressIndicator(progress = { fuelFrac }, modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape),
-                color = if (live && s.fuelBars <= 1) Color(0xFFE5484D) else MaterialTheme.colorScheme.primary,
+                color = if (f.low) Color(0xFFE5484D) else MaterialTheme.colorScheme.primary,
                 trackColor = MaterialTheme.colorScheme.surfaceContainerHighest, gapSize = 0.dp, drawStopIndicator = {})
             Spacer(Modifier.height(10.dp))
-            Row { Stat("Range", "${s.dteKm} km", Modifier.weight(1f)); Stat("Odometer", "%.1f km".format(s.odoKm), Modifier.weight(1f)) }
+            Row { Stat("Range", if (f.tankKnown) "%.0f km".format(f.rangeKm) else "–", Modifier.weight(1f)); Stat("Odometer", if ("odo" in s.unknown) "–" else "%.1f km".format(s.odoKm), Modifier.weight(1f)) }
+            Text("Range = petrol left × how you've been riding (%.1f km/l over the last ~50 km). Bike gauge: %s. The bike's own range is ignored."
+                .format(f.recentKmpl, if (live) "${s.fuelBars} of $FUEL_BARS bars" else "–"),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
         }
 
         Panel {
@@ -132,6 +178,10 @@ fun RideScreen(modifier: Modifier) {
             }
             Spacer(Modifier.height(10.dp))
             Row { Stat("Top speed", "${s.topSpeed} km/h", Modifier.weight(1f)); Stat("Avg speed", "${s.avgSpeed} km/h", Modifier.weight(1f)) }
+            if (lean.maxLeft > 0 || lean.maxRight > 0) {
+                Spacer(Modifier.height(10.dp))
+                Row { Stat("Max lean, left", "${lean.maxLeft}°", Modifier.weight(1f)); Stat("Max lean, right", "${lean.maxRight}°", Modifier.weight(1f)) }
+            }
         }
 
         ServiceCard()
@@ -202,6 +252,7 @@ private fun Telltales(s: BikeState, live: Boolean) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Lamp("◀ Left", live && s.leftInd, Color(0xFF5CC27C))
         Lamp("Right ▶", live && s.rightInd, Color(0xFF5CC27C))
+        Lamp("⚠ Hazard", live && Bike.hazard.collectAsState().value, Color(0xFFFF7A6E))
         Lamp("High beam", live && s.highBeam, Color(0xFF6EA8FF))
         Lamp("Neutral", live && s.neutral, Color(0xFF5CC27C))
         Lamp("Engine on", live && s.engineOn, Color(0xFF5CC27C))
@@ -296,6 +347,86 @@ fun RollingNumber(value: Int, fontSize: androidx.compose.ui.unit.TextUnit, color
                             (slideOutVertically(tween(300)) { if (up) -it else it } + fadeOut(tween(200))) using SizeTransform(clip = true)
                     }, label = "digit",
                 ) { d -> Text("$d", fontSize = fontSize, fontWeight = FontWeight.SemiBold, lineHeight = fontSize, color = color) }
+            }
+        }
+    }
+}
+
+/** Engine warm-up after a cold start: how warm it is, and a hint to go easy until it is. */
+@Composable
+private fun WarmCard(w: WarmUp) {
+    val cs = MaterialTheme.colorScheme
+    val c = DashColors(false, cs.surfaceContainer, cs.onSurface, cs.onSurfaceVariant, Color(0xFFE8930C), Color(0xFFE5484D), cs.background.red < .3f)
+    val mins = (System.currentTimeMillis() - w.sinceMs) / 60_000.0
+    val rate = if (mins > .5) (w.nowC - w.startC) / mins else 0.0
+    val left = if (rate > .3) ((w.warmC - w.nowC) / rate).toInt() else null
+    Panel {
+        Text("Cold start", color = cs.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+        Text("Engine warming up", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(10.dp))
+        WarmBar(w, c, Modifier.fillMaxWidth())
+        Spacer(Modifier.height(8.dp))
+        Text("Started at ${w.startC} °C. Go easy on the revs until it reaches ${w.warmC} °C" + (left?.let { ", about $it min more" } ?: "") +
+            ". You'll hear a soft chime when it's warm.", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
+    }
+}
+
+/** "Filled up?" One question, answered with one tap (full tank) or a number (litres or ₹, the way pumps in India sell it). Optional. */
+@Composable
+private fun FuelAskCard(a: FuelAsk, prefs: Prefs) {
+    var stage by remember(a) { mutableStateOf(a.stage) }
+    var input by remember(stage) { mutableStateOf("") }
+    fun answer(kind: String, v: Double? = null) { Bike.service?.answerFuel(kind, v) ?: run { Bike.ask.value = null } }
+    Panel {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Ic("pump", MaterialTheme.colorScheme.primary, 30.dp)
+            Spacer(Modifier.width(12.dp))
+            Column {
+                val time = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(java.util.Date(a.at))
+                Text(when {
+                    stage == "litres" -> "How many litres?"; stage == "rs" -> "How many rupees?"; stage == "pump" -> "Full tank. Litres on the pump?"
+                    a.late -> "Filled up${if (a.station.isNotBlank()) " at ${a.station}" else ""}, $time?"
+                    else -> "Filled up?"
+                }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(when {
+                    stage == "rs" -> "At ₹%.0f/L (change in Settings)".format(prefs.fuelPrice); stage == "litres" -> "As shown on the pump"
+                    stage == "pump" -> "Optional: it makes your mileage and range exact"
+                    a.late -> "Going by the fuel gauge: ${a.guess}. Correct it if you like, or just ignore this."
+                    else -> a.station.ifBlank { "Fuel gauge went up" }
+                }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        @OptIn(ExperimentalLayoutApi::class)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            when (stage) {
+                "ask" -> {
+                    androidx.compose.material3.Button(onClick = { stage = "pump" }) { Text("Full tank") }
+                    androidx.compose.material3.FilledTonalButton(onClick = { stage = "litres" }) { Text("Litres") }
+                    androidx.compose.material3.FilledTonalButton(onClick = { stage = "rs" }) { Text("₹") }
+                    if (a.late) androidx.compose.material3.TextButton(onClick = { answer("keep") }) { Text("Looks right") }
+                    androidx.compose.material3.TextButton(onClick = { answer("no") }) { Text(if (a.late) "Didn't fill" else "No") }
+                }
+                else -> {
+                    if (stage != "pump") (if (stage == "rs") listOf(100, 200, 500, 1000) else listOf(1, 2, 5, 10)).forEach { v ->
+                        androidx.compose.material3.AssistChip(onClick = { input = "$v" }, label = { Text(if (stage == "rs") "₹$v" else "$v L") })
+                    }
+                }
+            }
+        }
+        if (stage != "ask") {
+            androidx.compose.material3.OutlinedTextField(input, { input = it }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                placeholder = { Text(if (stage == "rs") "₹" else "litres") },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                androidx.compose.material3.Button(onClick = {
+                    val v = input.toDoubleOrNull()
+                    when {
+                        stage == "pump" -> answer("full", v)
+                        v != null && v > 0 -> answer(stage, v)
+                    }
+                }) { Text("OK") }
+                androidx.compose.material3.TextButton(onClick = { if (stage == "pump") answer("full", null) else stage = "ask" }) { Text(if (stage == "pump") "Skip" else "Back") }
             }
         }
     }

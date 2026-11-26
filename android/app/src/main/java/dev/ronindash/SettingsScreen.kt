@@ -43,6 +43,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -148,11 +149,31 @@ fun SettingsScreen(modifier: Modifier) {
                 Item("Bluetooth permission", "Needed to talk to the bike") { Button(onClick = { perm.launch(BT) }) { Text("Allow") } }
             } else BikePicker(ctx, prefs) { refresh++ }
             Divider()
-            Item("Connection", if (BikeService.running) "Running in the background" else "Stopped") {
-                if (BikeService.running) OutlinedButton(onClick = { BikeService.stop(ctx); refresh++ }) { Text("Stop") }
-                else Button(onClick = { BikeService.start(ctx); refresh++ }) { Text("Start") }
+            val assoc = remember(refresh) { CompanionLink.isAssociated(ctx) }
+            var err by remember { mutableStateOf<String?>(null) }
+            val chooser = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
+                if (r.resultCode == android.app.Activity.RESULT_OK) CompanionLink.onChosen(ctx, r.data); refresh++
             }
+            Item("Let Android wake the app", err ?: if (assoc) "On: the app starts by itself when the bike turns on, and stops when it turns off"
+                else "Off: Android doesn't know your bike yet, so the app can't start by itself") {
+                if (!assoc) Button(onClick = {
+                    err = null
+                    CompanionLink.associate(ctx, { chooser.launch(androidx.activity.result.IntentSenderRequest.Builder(it).build()) }, { err = it })
+                }) { Text("Set up") }
+                else Text("On", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
+            }
+            Divider()
+            Item("Connection", when {
+                conn.phase == Phase.LIVE -> "Connected"
+                BikeService.running -> "Looking for the bike"
+                else -> "Bike off: nothing is running"
+            })
         }
+
+        RidingScreensSection(prefs)
+        NightSection(prefs)
+        SoundsSection(prefs)
+        WarmSection(prefs)
 
         SpeedSection(prefs)
         ServiceSection(prefs)
@@ -169,6 +190,8 @@ fun SettingsScreen(modifier: Modifier) {
             Divider(); SwitchItem("Google Maps turns", initial = prefs.navOn) { prefs.navOn = it }
         }
 
+        HoldSection(prefs)
+
         Section("I button") {
             var a by remember { mutableStateOf(prefs.assist) }
             Text("Hold 2–3 seconds, then let go", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 12.dp))
@@ -179,7 +202,8 @@ fun SettingsScreen(modifier: Modifier) {
             }
             Divider()
             SwitchItem("Show \"Listening\" on the bike", initial = prefs.vaFeedback) { prefs.vaFeedback = it }
-            Hint("During a call: a tap rejects; hold about 2½ seconds and let go to answer. Holding much longer does nothing. Nothing starts on its own when you connect.")
+            Hint("During a call: a tap rejects; hold about 2½ seconds and let go to answer. During a crash alert: hold to say you're OK. " +
+                "You can also ask the assistant to \"set bike brightness up\" (app shortcuts).")
         }
 
         Section("Trips and fuel") {
@@ -193,16 +217,16 @@ fun SettingsScreen(modifier: Modifier) {
                 OutlinedTextField(tank, { tank = it; it.toDoubleOrNull()?.let { v -> prefs.tankL = v } }, label = { Text("Tank (L)") },
                     singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
             }
-            Hint("Mileage is estimated from speed (60 km/h ≈ 44 km/l, 120 km/h ≈ 32 km/l) and RPM. " +
-                "Learned top-gear ratio: %.0f rpm per km/h.".format(prefs.rpmPerKmhTop))
+            Hint("Fuel is counted by the app from engine speed and throttle, corrected by each fill-up you log " +
+                "(correction ×%.2f, %d full tanks so far). Range uses your mileage over the last ~50 km (%.1f km/l). ".format(prefs.fuelCal, prefs.fulls, prefs.recKm / prefs.recL.coerceAtLeast(.1)) +
+                (if (prefs.speedoK != 1.0) "Your speedometer reads %+.1f%% against GPS; trips use the corrected distance.".format((prefs.speedoK - 1) * 100) else ""))
         }
 
-        PermissionsSection(perm::launch)
+        PermissionsSection(refresh)
 
         Section("App") {
-            SwitchItem("Start after phone restart", initial = prefs.autoStart) { prefs.autoStart = it }
-            Divider(); SwitchItem("Keep a log file", "For testing and bug reports", prefs.fileLog) { prefs.fileLog = it }
-            Divider(); Item("Version", "Ronin Dash 0.4 · unofficial, not affiliated with TVS Motor")
+            SwitchItem("Keep a log file", "For testing and bug reports", prefs.fileLog) { prefs.fileLog = it }
+            Divider(); Item("Version", "Ronin Dash 0.5 · unofficial, not affiliated with TVS Motor")
             Hint("Don't use the phone while riding.")
         }
         Spacer(Modifier.height(8.dp))
@@ -255,7 +279,7 @@ private fun SpeedSection(prefs: Prefs) {
             }
             Slider(limit, { limit = (it / 5).roundToInt() * 5f }, valueRange = 30f..150f, steps = 23,
                 onValueChangeFinished = { prefs.speedLimit = limit.roundToInt() })
-            Divider(); SwitchItem("Beep and vibrate on the phone", initial = prefs.speedBeep) { prefs.speedBeep = it }
+            Divider(); SwitchItem("Vibrate the phone too", "A sound plays in your helmet either way", prefs.speedBeep) { prefs.speedBeep = it }
             Divider(); SwitchItem("Use the bike's own overspeed warning", "Sends this limit to the cluster", prefs.clusterOverspeed) { prefs.clusterOverspeed = it }
             Hint("Alerts after 3 s above the limit, at most every 30 s.")
         } }
@@ -365,30 +389,15 @@ private fun SosSection(prefs: Prefs) {
 // ------------------------------------------------------------------ permissions
 
 @Composable
-private fun PermissionsSection(launch: (Array<String>) -> Unit) {
-    val ctx = LocalContext.current
-    val nm = ctx.getSystemService(NotificationManager::class.java)
-    val pm = ctx.getSystemService(PowerManager::class.java)
-    fun open(i: Intent) = try { ctx.startActivity(i) } catch (_: Exception) {}
+private fun PermissionsSection(tick: Int) {
     Section("Permissions") {
-        Perm("Notifications", "Connection status while riding", granted(ctx, Manifest.permission.POST_NOTIFICATIONS)) { launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) }
-        Divider(); Perm("Location", "Trips and the location in SOS messages", granted(ctx, *LOC)) { launch(LOC) }
-        Divider(); Perm("Calls and contacts", "Caller name, answer/reject with I, missed calls", granted(ctx, *PHONE)) { launch(PHONE) }
-        Divider(); Perm("SMS and calls for SOS", "Sends the emergency message", granted(ctx, *SOS)) { launch(SOS) }
-        Divider(); Perm("Notification access", "SMS, WhatsApp and Google Maps turns",
-            nm.isNotificationListenerAccessGranted(ComponentName(ctx, NotifListener::class.java))) { open(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
-        Divider(); Perm("Display over other apps", "Opens the assistant and crash alert from the pocket", Settings.canDrawOverlays(ctx)) {
-            open(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}")))
+        val allowAll = PermissionRows(tick, rowDivider = { Divider() }) { p, ok, grant ->
+            Item(p.name, p.why) {
+                if (ok) Text("On", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
+                else OutlinedButton(onClick = grant) { Text("Allow") }
+            }
         }
-        Divider(); Perm("No battery limits", "Keeps the connection alive", pm.isIgnoringBatteryOptimizations(ctx.packageName)) {
-            @SuppressLint("BatteryLife") val i = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${ctx.packageName}"))
-            open(i)
-        }
-        Divider()
-        Item("Xiaomi / Redmi", "App info → Autostart on, Battery saver → No restrictions",
-            onClick = { open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}"))) }) {
-            Text("Open", color = MaterialTheme.colorScheme.primary)
-        }
+        TextButton(onClick = allowAll, modifier = Modifier.padding(top = 4.dp)) { Text("Allow everything that's missing") }
     }
 }
 
@@ -447,5 +456,131 @@ private fun BikePicker(ctx: Context, prefs: Prefs, changed: () -> Unit) {
             Bike.log("Pairing ${d.name}: createBond=${d.createBond()}")
             prefs.mac = d.address; prefs.bikeName = d.name ?: ""; chosen = d.address; changed()
         })
+    }
+}
+
+// ------------------------------------------------------------------ new sections
+
+@Composable
+private fun Choice(options: List<Pair<String, String>>, initial: String, set: (String) -> Unit) {
+    var v by remember { mutableStateOf(initial) }
+    androidx.compose.material3.SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+        options.forEachIndexed { i, (k, label) ->
+            SegmentedButton(v == k, { v = k; set(k) },
+                androidx.compose.material3.SegmentedButtonDefaults.itemShape(i, options.size)) { Text(label, maxLines = 1) }
+        }
+    }
+}
+
+@Composable
+private fun SliderItem(title: String, initial: Int, range: IntRange, step: Int, unit: String, set: (Int) -> Unit) {
+    var v by remember { mutableFloatStateOf(initial.toFloat()) }
+    Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+        Text("${v.roundToInt()}$unit", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+    }
+    Slider(v, { v = ((it / step).roundToInt() * step).toFloat() }, valueRange = range.first.toFloat()..range.last.toFloat(),
+        steps = (range.last - range.first) / step - 1, onValueChangeFinished = { set(v.roundToInt()) })
+}
+
+@Composable
+private fun RidingScreensSection(prefs: Prefs) {
+    Section("Riding screens") {
+        SliderItem("Fast-riding screen above", prefs.fastKmh, 40..120, 5, " km/h") { prefs.fastKmh = it }
+        Hint("Parked: everything. Riding: one big number and the next turn. Fast: just a glow and the turn arrow. Swipe up any time to see everything for 10 s.")
+        Divider(); SwitchItem("Open the dashboard when the bike connects", "Only when the phone is on its mount, not in a pocket", prefs.autoOpen) { prefs.autoOpen = it }
+        Divider(); SwitchItem("Fight the sun", "Max brightness in strong light; rests the screen when the phone gets hot", prefs.fightSun) { prefs.fightSun = it }
+        Divider(); SwitchItem("Bike display brightness follows the light", "Uses the phone's light sensor; stops if you change it on the bike", prefs.clusterBright) { prefs.clusterBright = it }
+        Divider(); SwitchItem("Let the assistant change bike brightness", "\"Bike brightness up\" via app shortcuts", prefs.agentBright) { prefs.agentBright = it }
+    }
+}
+
+@Composable
+private fun NightSection(prefs: Prefs) {
+    var mode by remember { mutableStateOf(prefs.night) }
+    Section("Night panel") {
+        Choice(listOf("off" to "Off", "night" to "Sunset to sunrise", "always" to "Always"), mode) { mode = it; prefs.night = it }
+        androidx.compose.animation.AnimatedVisibility(mode != "off") { Column {
+            Text("Glow colour", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp))
+            var glow by remember { mutableStateOf(prefs.nightGlow) }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(vertical = 10.dp)) {
+                listOf("accent" to MaterialTheme.colorScheme.primary, "red" to Color(0xFFFF453A), "amber" to Color(0xFFFFB020),
+                    "green" to Color(0xFF3DDC84), "white" to Color.White).forEach { (k, c) ->
+                    Box(Modifier.size(34.dp).clip(CircleShape).background(c)
+                        .border(if (glow == k) 3.dp else 1.dp, if (glow == k) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                        .clickable { glow = k; prefs.nightGlow = k })
+                }
+            }
+            SliderItem("Brightness", prefs.nightBright, 20..100, 10, "%") { prefs.nightBright = it }
+            Text("While riding, show", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp))
+            Choice(listOf("mileage" to "Mileage", "speed" to "Speed", "nothing" to "Nothing"), prefs.nightShow) { prefs.nightShow = it }
+            SwitchItem("Show the next turn", initial = prefs.nightTurns) { prefs.nightTurns = it }
+            Hint("A dark panel with one dim colour, so it doesn't dazzle you at night. Parked, it shows the full dashboard.")
+        } }
+    }
+}
+
+@Composable
+private fun SoundsSection(prefs: Prefs) {
+    val ctx = LocalContext.current
+    val local = remember { mutableStateOf<Sounds?>(null) }
+    DisposableEffect(Unit) { onDispose { local.value?.release() } }
+    fun sounds(): Sounds = (if (BikeService.running) Bike.service?.sounds else null) ?: local.value ?: Sounds(ctx).also { local.value = it }
+    Section("Sounds in your helmet") {
+        SwitchItem("Indicator ticks", "Left and right sound different; a nudge if you leave it on", prefs.sndInd) { prefs.sndInd = it }
+        Divider(); SwitchItem("Turn tones", "Before each Google Maps turn", prefs.sndTurns) { prefs.sndTurns = it }
+        Divider(); SwitchItem("Say the turns too", initial = prefs.sayTurns) { prefs.sayTurns = it }
+        Divider(); SwitchItem("Speed alert", initial = prefs.sndSpeed) { prefs.sndSpeed = it }
+        Divider(); SwitchItem("Warnings", "Warning lamp, fuel low, side stand", prefs.sndWarn) { prefs.sndWarn = it }
+        Divider(); SwitchItem("Missed calls and messages", "One chirp each, once you slow down", prefs.sndMissed) { prefs.sndMissed = it }
+        Divider(); SwitchItem("Engine warmed up", initial = prefs.sndWarm) { prefs.sndWarm = it }
+        Divider()
+        Text("Voice", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 12.dp))
+        Choice(listOf("off" to "Off", "emergency" to "Emergencies", "more" to "More"), prefs.voice) { prefs.voice = it }
+        Text("Whose voice", style = MaterialTheme.typography.bodyLarge)
+        var who by remember { mutableStateOf(prefs.voiceName) }
+        Sounds.VOICES.forEach { (k, name, kind) ->
+            Row(Modifier.fillMaxWidth().clickable { who = k; prefs.voiceName = k; sounds().loadVoice(k); sounds().say("Bike connected", 300) },
+                verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(who == k, { who = k; prefs.voiceName = k; sounds().loadVoice(k); sounds().say("Bike connected", 300) })
+                Text(name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Text(kind, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Divider()
+        var open by remember { mutableStateOf(false) }
+        Item("Hear the sounds", if (open) null else "${SOUND_DEMO.size} sounds", onClick = { open = !open }) {
+            Text(if (open) "Hide" else "Show", color = MaterialTheme.colorScheme.primary)
+        }
+        androidx.compose.animation.AnimatedVisibility(open) { Column {
+            SOUND_DEMO.forEach { (label, steps) ->
+                Item(label, onClick = { val s = sounds(); steps.forEach { (n, d) -> s.play(n, d) } }) {
+                    Text("▶", color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        } }
+        Hint("Short sounds, not sentences: music dips for a moment. Voice is kept for emergencies unless you pick More.")
+    }
+}
+
+@Composable
+private fun HoldSection(prefs: Prefs) {
+    var on by remember { mutableStateOf(prefs.holdAlerts) }
+    Section("Calls and messages while riding") {
+        SwitchItem("Hold them until I slow down", "Caller names and messages wait; you hear one chirp each when you slow down", on) { on = it; prefs.holdAlerts = it }
+        androidx.compose.animation.AnimatedVisibility(on) { Column {
+            SliderItem("Slow means below", prefs.slowKmh, 5..60, 5, " km/h") { prefs.slowKmh = it }
+        } }
+        Hint("Emergencies are never held.")
+    }
+}
+
+@Composable
+private fun WarmSection(prefs: Prefs) {
+    Section("Engine warm-up") {
+        SwitchItem("Chime when the engine is warm", "After a cold start; the dashboard shows a warm-up bar", prefs.sndWarm) { prefs.sndWarm = it }
+        Divider()
+        SliderItem("Warm at", prefs.warmC, 40..80, 5, " °C") { prefs.warmC = it }
+        Hint("A start counts as cold when the engine is more than 5 °C below this. On your rides it took about 9 minutes to go from cold to 60 °C.")
     }
 }
