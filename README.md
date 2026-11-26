@@ -76,7 +76,6 @@ Ronin Dash talks to the cluster directly over Bluetooth LE using a protocol docu
 - [ ] Fuel used, measured from the engine's injection counter and calibrated against fill-ups.
 - [ ] Faster recovery when call audio on an intercom drops the bike link.
 - [ ] Signed release builds.
-- [ ] Choose and add a licence.
 
 ## Repository layout
 
@@ -103,3 +102,15 @@ settings using the passkey shown on the cluster. Then choose it in **Settings**.
 ## Credits
 
 Voice clips: [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0).
+
+## Licence
+
+Ronin Dash is free software under the [GNU General Public License v3.0](LICENSE). You may use, study, share and change
+it. If you publish a modified version, or an app built on this code, you must release its full source code under the
+same licence, so nobody can turn it into a closed app. Anyone who sells a copy must also give its buyers the source code
+and the right to share it for free.
+
+**Commercial licence.** If you want to use this code in a closed-source or commercial product, contact the author
+through [GitHub](https://github.com/mohammed-Araf) for a separate paid licence.
+
+Copyright © 2026 mohammed-Araf.
