@@ -1,0 +1,51 @@
+name: Bug report
+description: Something in Ronin Dash didn't work or showed the wrong thing
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      description: Riding, parked, engine on/off, navigation running, intercom connected… whatever was going on.
+      placeholder: |
+        1. Bike on, app opened
+        2. Started Google Maps navigation
+        3. ...
+  - type: input
+    id: phone
+    attributes:
+      label: Phone and Android version
+      placeholder: Redmi Note 12, Android 14 (MIUI / HyperOS)
+    validations:
+      required: true
+  - type: input
+    id: app
+    attributes:
+      label: Ronin Dash version
+      description: Settings → bottom of the page.
+      placeholder: "0.5"
+    validations:
+      required: true
+  - type: input
+    id: bike
+    attributes:
+      label: Bike
+      placeholder: Ronin 2024 SE / TD / DS, model year
+  - type: textarea
+    id: log
+    attributes:
+      label: Log (helps a lot)
+      description: Test & log → share the log, then paste or attach it here. Check it first and remove anything private (names, numbers).
+      render: text
+  - type: textarea
+    id: shots
+    attributes:
+      label: Screenshots or video
+      description: Drag them in here.
