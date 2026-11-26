@@ -68,6 +68,20 @@ Ronin Dash talks to the cluster directly over Bluetooth LE using a protocol docu
 - Porting the reviewed UI redesign, about 30 changes designed in the browser mock-up, into the app.
 - A full real-world ride with Ronin Dash as the only app.
 
+### 🔭 Next big things (ideas welcome)
+
+- **Any navigation app:** turn arrows and distance from Google Maps, Waze, HERE WeGo, Organic Maps, OsmAnd and others,
+  not just Google Maps.
+- **Music:** play, pause, skip and volume for Spotify, YouTube Music or any player.
+- **Your assistant:** Gemini, Google Assistant or any other, on the I button.
+- **Riding-safe controls.** The bike has one I button that sends one signal, so music and volume need another way that is
+  easy with gloves and never needs a look at the phone. Options being explored:
+  - press patterns on the I and Mode buttons (double press, press-and-hold)
+  - the helmet intercom's own buttons
+  - a small Bluetooth remote on the handlebar
+  - volume that follows speed, louder as wind noise rises
+  - voice commands through your assistant
+
 ### 📋 Planned
 
 - [ ] Turn-by-turn arrows on the cluster: map the navigation pictogram ids (§7 of the protocol).
