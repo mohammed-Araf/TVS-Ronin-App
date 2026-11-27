@@ -19,7 +19,17 @@ class NotifListener : NotificationListenerService() {
 
     override fun onListenerConnected() {
         prefs = Prefs(this)
+        Bike.listenerOn.value = true
+        Bike.log("[notif] notification reader running")
         recount()
+        // Navigation already going when we connect: read it now instead of waiting for Maps' next update.
+        try { activeNotifications?.filter { it.packageName == MAPS }?.forEach { onNotificationPosted(it) } } catch (_: Exception) {}
+    }
+
+    override fun onListenerDisconnected() {
+        Bike.listenerOn.value = false
+        Bike.log("[notif] notification reader stopped, asking Android to restart it")
+        try { requestRebind(android.content.ComponentName(this, NotifListener::class.java)) } catch (_: Exception) {}
     }
 
     private fun isMessageApp(pkg: String): Boolean {

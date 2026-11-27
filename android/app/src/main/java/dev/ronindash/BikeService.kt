@@ -58,7 +58,7 @@ import kotlin.math.sin
  * - status every 2 s (clock, real missed calls / unread messages, no stuck voice-assist state)
  * - I button on its rising edge: tap = reject, hold 2–3 s and let go = answer / assistant
  * - caller at once (≤ 3 times, never during an answered call); calls and messages held while riding fast
- * - turns on the bike only when close, helmet sounds, fuel model, warm-up, screens, bike display brightness
+ * - turns on the bike for the whole route (refreshed every second), helmet sounds, fuel model, warm-up, screens, bike display brightness
  */
 @SuppressLint("MissingPermission")
 class BikeService : Service() {
@@ -714,6 +714,7 @@ class BikeService : Service() {
     private var navActive = false
     private var lastNavKey = ""
     private var lastNavSent = 0L
+    private val NAV_KEEPALIVE_MS = 5000L
     private var navMeters = -1.0
     private var navPrevM = 99999.0
     private var navDir = Dir.UNKNOWN
@@ -744,7 +745,6 @@ class BikeService : Service() {
         if (navMeters < 0) return
         val m = navMeters
         if (!turnShown && m <= turnWindow()) turnShown = true
-        val near = turnShown && m <= 1100
         Bike.turn.value = if (turnShown && prefs.navOn) Turn(navDir, roundM(m), turnAngle(), m <= 120) else null
         // helmet tones: two notes at 300 m, three at the turn, in the ear you turn to (Google's own voice keeps working)
         if (ready && prefs.sndTurns) {
@@ -753,14 +753,15 @@ class BikeService : Service() {
             if (navPrevM > 50 && m <= 50 && now != null) sounds.play(now)
         }
         navPrevM = m
-        // On the bike only when close, then the display goes back to normal so a long press reaches us between turns.
-        if (!sendNow && !near) return
-        if (!near) { if (navActive) { send("nav-end", Protocol.nav(0, 0, 0, 7, 7)); navActive = false }; return }
+        // On the bike for the whole route (owner, 2026-11-27). The cluster drops the navigation screen ~19 s after the last
+        // frame (measured 2026-11-27; the official app floods it every 0.5 s). This runs every second from the main tick: a
+        // change on screen is sent at once, otherwise a keep-alive every 5 s (three can go missing before the screen drops).
+        if (!sendNow) return
         val n = Bike.nav.value ?: return
         val next = if (m >= 100) ((m + 25) / 50).toInt() * 50 else m.toInt()
         val key = "$next|${n.dir}|${n.road}|${n.minutesLeft}"
         val t = System.currentTimeMillis()
-        if (key == lastNavKey && t - lastNavSent < 5000) return
+        if (key == lastNavKey && t - lastNavSent < NAV_KEEPALIVE_MS) return
         lastNavKey = key; lastNavSent = t; navActive = true
         val (picto, state) = when {
             n.dir == Dir.ARRIVE -> 7 to 8
@@ -1189,7 +1190,8 @@ class BikeService : Service() {
                 indOnS = if (indSide() != null && !Bike.hazard.value && s.speed > 20) indOnS + 1 else 0
                 if (indOnS == 30 && prefs.sndInd) sounds.cue("ind_forgot", "Indicator")
                 // countdown between Maps updates, from our own speed
-                if (navMeters > 0 && moving) { navMeters = max(0.0, navMeters - (gpsKmh ?: (s.speed / prefs.speedoK)) / 3.6); updateTurn(sendNow = false) }
+                if (navMeters > 0 && moving) navMeters = max(0.0, navMeters - (gpsKmh ?: (s.speed / prefs.speedoK)) / 3.6)
+                if (navMeters >= 0 && prefs.navOn) updateTurn(sendNow = true)   // keeps the route on the cluster, parked too
                 if (battAtStart > 0) Bike.rideBatteryUsed.value = (battAtStart - batteryPct()).coerceAtLeast(0)
                 Bike.guardFailing.value = guard.failing()
             } else Bike.mode.value = RideMode.PARK

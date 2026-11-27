@@ -121,6 +121,7 @@ fun RideScreen(modifier: Modifier) {
         Appear(warm != null) { warm?.let { WarmCard(it) } }
 
         Appear(ask != null) { ask?.let { FuelAskCard(it, prefs) } }
+        ReaderBlockedCard()
 
         // Live mileage: km/l now (smoothed), trip average, a bar for better/worse than average, idling L/h, trip litres and ₹
         Appear(f.tripKm > 0 || f.moving || f.idling) {
@@ -307,6 +308,47 @@ private fun SosButton() {
             .background(Color(0xFFFF7A6E).copy(alpha = 0.15f))
             .pointerInput(Unit) { detectTapGestures(onLongPress = { Bike.service?.manualSos() ?: Bike.log("Start the connection first (Settings)") }) }
             .padding(horizontal = 16.dp, vertical = 10.dp))
+}
+
+/**
+ * Notification access is on but Android isn't running our reader, so Google Maps turns and messages never arrive. On Xiaomi
+ * this is MIUI's Autostart switch, which an app update turns off (2026-11-27). Shown after a grace period, gone once it runs.
+ */
+@Composable
+private fun ReaderBlockedCard() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val on by Bike.listenerOn.collectAsState()
+    val resume by Bike.resumeTick.collectAsState()
+    var waited by remember { mutableStateOf(false) }
+    val cn = remember { android.content.ComponentName(ctx, NotifListener::class.java) }
+    val granted = remember(resume) {
+        ctx.getSystemService(android.app.NotificationManager::class.java).isNotificationListenerAccessGranted(cn)
+    }
+    LaunchedEffect(resume) {
+        // back from Settings: ask Android to start the reader again (works once Autostart is on)
+        if (granted && !Bike.listenerOn.value) try { android.service.notification.NotificationListenerService.requestRebind(cn) } catch (_: Exception) {}
+        kotlinx.coroutines.delay(8000); waited = true
+    }
+    val xiaomi = android.os.Build.MANUFACTURER.lowercase() in setOf("xiaomi", "redmi", "poco")
+    Appear(granted && !on && waited) {
+        Panel {
+            Text("Maps and messages blocked", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.error)
+            Spacer(Modifier.height(4.dp))
+            Text(if (xiaomi) "The phone stopped Ronin Dash from reading Google Maps and messages (it does this after an update). " +
+                    "Turn Autostart on for Ronin Dash, then come back."
+                else "The phone isn't letting Ronin Dash read Google Maps and messages. Turn notification access off and on again.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(10.dp))
+            androidx.compose.material3.Button(onClick = {
+                val intents = if (xiaomi) listOf(
+                    android.content.Intent().setClassName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"),
+                    android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${ctx.packageName}")),
+                ) else listOf(android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                for (i in intents) { try { ctx.startActivity(i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)); break } catch (_: Exception) {} }
+            }) { Text(if (xiaomi) "Open Autostart" else "Open notification access") }
+        }
+    }
 }
 
 @Composable

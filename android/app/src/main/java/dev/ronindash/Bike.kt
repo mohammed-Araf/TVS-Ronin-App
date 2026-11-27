@@ -21,6 +21,9 @@ object Bike {
     val unreadFrom = MutableStateFlow<List<String>>(emptyList())
     val nav = MutableStateFlow<NavInfo?>(null)
     val lastMapsRaw = MutableStateFlow("")
+    /** Android has our notification reader running (Maps turns, messages). Access can be on while the phone blocks it:
+     *  MIUI's Autostart manager refuses to start it after every app update. */
+    val listenerOn = MutableStateFlow(false)
     val log = MutableStateFlow<List<String>>(emptyList())
     val resumeTick = MutableStateFlow(0)
     val logFile = MutableStateFlow("")
