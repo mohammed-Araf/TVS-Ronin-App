@@ -842,12 +842,15 @@ class BikeService : Service() {
         val now = SystemClock.elapsedRealtime()
         if (s.leftInd) leftSeen = now
         if (s.rightInd) rightSeen = now
-        val wasOn = indSide() != null
         Bike.hazard.value = now - leftSeen < IND_HOLD_MS && now - rightSeen < IND_HOLD_MS && abs(leftSeen - rightSeen) < 1500
         val side = indSide()
         if (side != Bike.indicator.value) { Bike.indicator.value = side; Bike.log("[ind] ${side ?: "off"}") }
-        if (!wasOn && side != null) { h.removeCallbacks(blinker); h.post(blinker) }
+        // Start the tick-tock if it isn't running. (Until 0.6.4 this checked "was it on?" AFTER recording the lit reading,
+        // so the answer was always yes and the ticker never started: no indicator sound at all.)
+        if (side != null && !blinking) { blinking = true; h.removeCallbacks(blinker); h.post(blinker) }
     }
+
+    private var blinking = false
 
     private val IND_HOLD_MS = 3500L
 
@@ -862,7 +865,7 @@ class BikeService : Service() {
         override fun run() {
             val side = indSide()
             if (side != Bike.indicator.value) { Bike.indicator.value = side; Bike.log("[ind] ${side ?: "off"}") }
-            if (side == null) { sounds.keepAwake(false); return }
+            if (side == null) { sounds.keepAwake(false); blinking = false; return }
             if (ready && prefs.sndInd) sounds.keepAwake(true)
             if (ready && prefs.sndInd) sounds.play((if (blinkPhase) "ind_tick_" else "ind_tock_") + side)
             blinkPhase = !blinkPhase
