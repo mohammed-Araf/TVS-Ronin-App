@@ -715,8 +715,7 @@ class BikeService : Service() {
     private var navActive = false
     private var lastNavKey = ""
     private var lastNavSent = 0L
-    private val NAV_KEEPALIVE_MS = 5000L
-    private var lastNavText = ""
+    private val NAV_KEEPALIVE_MS = 900L   // every main tick (1 s)
     private var navMeters = -1.0
     private var navPrevM = 99999.0
     private var navDir = Dir.UNKNOWN
@@ -755,16 +754,16 @@ class BikeService : Service() {
             if (navPrevM > 50 && m <= 50 && now != null) sounds.play(now)
         }
         navPrevM = m
-        // On the bike for the whole route (owner, 2026-11-27). The cluster drops the navigation screen ~19 s after the last
-        // frame (measured 2026-11-27; the official app floods it every 0.5 s). This runs every second from the main tick: a
-        // change on screen is sent at once, otherwise a keep-alive every 5 s (three can go missing before the screen drops).
+        // On the bike for the whole route (owner, 2026-11-27). Tested on the bike that day: the nav screen stays ~19 s after
+        // the last frame, but a refresh every 4–5 s flashes the normal page for 0.15–1 s each time, whatever the distance or
+        // fields; a refresh every second (5A 4E + 5B 4F) is steady. So this runs every second from the main tick. That's two
+        // 20-byte frames a second, a tiny share of the link; the official app sends four.
         if (!sendNow) return
         val n = Bike.nav.value ?: return
         val next = if (m >= 100) ((m + 25) / 50).toInt() * 50 else m.toInt()
         val key = "$next|${n.dir}|${n.road}|${n.minutesLeft}"
         val t = System.currentTimeMillis()
         if (key == lastNavKey && t - lastNavSent < NAV_KEEPALIVE_MS) return
-        val fresh = !navActive
         lastNavKey = key; lastNavSent = t; navActive = true
         val (picto, state) = when {
             n.dir == Dir.ARRIVE -> 7 to 8
@@ -776,11 +775,8 @@ class BikeService : Service() {
         }
         val sendNext = if (n.dir == Dir.ARRIVE || n.dir == Dir.UTURN) 0 else next
         send("nav", Protocol.nav(sendNext, n.minutesLeft, n.leftM, picto, state))
-        // The road line only when it changes (or a route starts): every 5B 4F makes the cluster redraw the nav screen, a
-        // ~150 ms flash of its normal page; 5A 4E alone refreshes it without a flash (tested on the bike 2026-11-27).
         val w = NavParser.word(n.dir)
-        val text = Protocol.clean(if (n.road.isBlank()) w else "$w ${n.road}".trim())
-        if (fresh || text != lastNavText) { lastNavText = text; send("nav-text", Protocol.navText(text)) }
+        send("nav-text", Protocol.navText(Protocol.clean(if (n.road.isBlank()) w else "$w ${n.road}".trim())))
     }
 
     private fun roundM(m: Double) = if (m >= 100) (m / 10).roundToInt() * 10 else max(0, m.roundToInt())
