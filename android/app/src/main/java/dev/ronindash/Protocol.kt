@@ -75,7 +75,7 @@ object Protocol {
         val c = Calendar.getInstance()
         val h = c.get(Calendar.HOUR_OF_DAY)
         val f = intArrayOf(
-            0x5B, 0x4A, (signal.coerceIn(0, 4) shl 4) or batt.coerceIn(0, 4), overspeed.coerceIn(30, 199), 0, 0,
+            0x5B, 0x4A, (signal.coerceIn(0, 4) shl 4) or batt.coerceIn(0, 4), if (overspeed == 0) 0 else overspeed.coerceIn(30, 199), 0, 0,
             h, c.get(Calendar.MINUTE), c.get(Calendar.SECOND), if (h < 12) 16 else 17,
             calls.coerceIn(0, 99), 0,
             c.get(Calendar.DAY_OF_MONTH), c.get(Calendar.MONTH) + 1, c.get(Calendar.YEAR) % 100,

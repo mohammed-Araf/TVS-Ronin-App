@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.background
@@ -96,12 +98,16 @@ fun TestScreen(modifier: Modifier) {
     LaunchedEffect(Unit) { Notes.load(ctx) }
     Column(modifier.fillMaxSize()) {
         androidx.compose.material3.SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
-            listOf("Tests", if (notes.isEmpty()) "Issues" else "Issues (${notes.size})").forEachIndexed { i, label ->
+            listOf("Tests", "Cluster", if (notes.isEmpty()) "Issues" else "Issues (${notes.size})").forEachIndexed { i, label ->
                 SegmentedButton(pane == i, { pane = i },
-                    androidx.compose.material3.SegmentedButtonDefaults.itemShape(i, 2)) { Text(label, maxLines = 1) }
+                    androidx.compose.material3.SegmentedButtonDefaults.itemShape(i, 3)) { Text(label, maxLines = 1) }
             }
         }
-        if (pane == 0) TestsPane(Modifier.weight(1f)) else IssuesPane(Modifier.weight(1f))
+        when (pane) {
+            0 -> TestsPane(Modifier.weight(1f))
+            1 -> ClusterPane(Modifier.weight(1f))
+            else -> IssuesPane(Modifier.weight(1f))
+        }
     }
 }
 
@@ -287,5 +293,68 @@ private fun Lamp(label: String, on: Boolean) {
         androidx.compose.foundation.layout.Box(Modifier.padding(0.dp).then(Modifier.size(10.dp))
             .background(c, androidx.compose.foundation.shape.CircleShape))
         Text(label, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+/** Test & log → Cluster: scripted tests ([ClusterTests]); the rider watches the bike and taps what they see. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ClusterPane(modifier: Modifier) {
+    val running by ClusterTests.now.collectAsState()
+    val conn by Bike.conn.collectAsState()
+    var note by rememberSaveable { mutableStateOf("") }
+    var msg by remember { mutableStateOf<String?>(null) }
+    var picked by rememberSaveable { mutableStateOf(ClusterTests.TESTS.first().key) }
+    val test = ClusterTests.TESTS.first { it.key == picked }
+    androidx.compose.foundation.lazy.LazyColumn(modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item { Spacer(Modifier.heightIn(min = 6.dp)); ConnPill(conn) }
+        item {
+            Text("Google Maps navigation off. Watch the bike, tap what you see. Everything is timed in the log.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        item {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                ClusterTests.TESTS.forEach { t ->
+                    androidx.compose.material3.FilterChip(t.key == picked, { if (running == null) picked = t.key }, { Text(t.title) })
+                }
+            }
+        }
+        item {
+            Panel {
+                Text(test.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text(test.how, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 8.dp))
+                if (running == null)
+                    Button(onClick = { msg = ClusterTests.start(test) }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Start") }
+                else {
+                    Text(running ?: "", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold)
+                    OutlinedButton(onClick = { ClusterTests.stop("stopped by you") }, modifier = Modifier.fillMaxWidth()) { Text("Stop") }
+                }
+                msg?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+            }
+        }
+        item {
+            Text("Tap when it happens", style = MaterialTheme.typography.labelLarge)
+            val marks = when (picked) {
+                "arrows" -> listOf("Looks right", "Wrong arrow", "No arrow")
+                "hold" -> listOf("Gone")
+                "km" -> listOf("Shows km", "Odd")
+                "official", "every5", "every2", "every1" -> listOf("Flash")
+                else -> listOf("Odd")
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(top = 6.dp)) {
+                marks.forEach { m ->
+                    FilledTonalButton(onClick = { ClusterTests.mark(m, note); note = "" },
+                        modifier = Modifier.heightIn(min = 64.dp).widthIn(min = 120.dp)) { Text(m, fontSize = 18.sp) }
+                }
+            }
+        }
+        item {
+            OutlinedTextField(note, { note = it }, label = { Text("Note for the next tap (optional)") },
+                placeholder = { Text("e.g. showed a U-turn, 60 km appeared") }, modifier = Modifier.fillMaxWidth())
+        }
+        item { Spacer(Modifier.heightIn(min = 24.dp)) }
     }
 }

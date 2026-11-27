@@ -11,8 +11,8 @@ android {
         applicationId = "dev.ronindash"
         minSdk = 31
         targetSdk = 36
-        versionCode = 17
-        versionName = "0.6.11"
+        versionCode = 19
+        versionName = "0.6.13"
     }
 
     buildTypes {

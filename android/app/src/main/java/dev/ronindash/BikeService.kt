@@ -58,7 +58,7 @@ import kotlin.math.sin
  * - status every 2 s (clock, real missed calls / unread messages, no stuck voice-assist state)
  * - I button on its rising edge: tap = reject, hold 2–3 s and let go = answer / assistant
  * - caller at once (≤ 3 times, never during an answered call); calls and messages held while riding fast
- * - turns on the bike for the whole route (refreshed every second), helmet sounds, fuel model, warm-up, screens, bike display brightness
+ * - turns on the bike for the whole route (official rhythm: direction every 0.5 s, road line 0.3 s after), helmet sounds, fuel model, warm-up, screens, bike display brightness
  */
 @SuppressLint("MissingPermission")
 class BikeService : Service() {
@@ -226,7 +226,7 @@ class BikeService : Service() {
 
     private fun closeGatt() {
         ready = false; writing = false; queue.clear(); tx = null; lastCode = 0
-        navActive = false; lastNavKey = ""   // on reconnect the cluster needs the whole route again, road line too
+        navActive = false; lastNavKey = ""; pumping = false   // on reconnect the cluster needs the whole route again
         gatt?.let { try { it.disconnect(); it.close() } catch (_: Exception) {} }
         gatt = null
     }
@@ -347,6 +347,8 @@ class BikeService : Service() {
         pump()
     }
 
+    private val lastLogged = HashMap<String, String>()
+
     private fun pump() {
         if (writing || !ready) return
         val (label, plain) = queue.removeFirstOrNull() ?: return
@@ -359,7 +361,8 @@ class BikeService : Service() {
             c.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT; c.value = enc; g.writeCharacteristic(c)
         }
         csv("TX", Protocol.hex(enc), Protocol.hex(plain), label)
-        if (label != "status") Bike.log("→ $label ${Protocol.hex(plain)}")
+        val hx = Protocol.hex(plain)
+        if (label != "status" && !(label.startsWith("nav") && lastLogged[label] == hx)) { lastLogged[label] = hx; Bike.log("→ $label $hx") }
         if (!ok) { Bike.log("write not accepted ($label)"); h.postDelayed({ pump() }, 200); return }
         writing = true
         h.postDelayed(writeTimeout, 1500)
@@ -379,10 +382,13 @@ class BikeService : Service() {
 
     private fun batteryPct() = getSystemService(BatteryManager::class.java).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
 
+    /** For the cluster tests: send our status frame right away. */
+    fun sendStatusNow() = h.post { if (ready) sendStatus() }
+
     private fun sendStatus() {
         val batt = ((batteryPct() + 12) / 25).coerceIn(0, 4)
         val va = if (System.currentTimeMillis() < vaUntil) 32 else 0
-        val os = if (prefs.speedAlert && prefs.clusterOverspeed) prefs.speedLimit else 120
+        val os = ClusterTests.statusOverspeed ?: if (prefs.speedAlert && prefs.clusterOverspeed) prefs.speedLimit else 120
         send("status", Protocol.status(Bike.missedCalls.value, Bike.unreadMessages.value, va, 4, batt, os))
     }
 
@@ -717,7 +723,6 @@ class BikeService : Service() {
     private var lastNavSent = 0L
     private val PICTO = mapOf(Dir.LEFT to 0, Dir.SHARP_LEFT to 1, Dir.SLIGHT_LEFT to 2, Dir.RIGHT to 3, Dir.SHARP_RIGHT to 4,
         Dir.SLIGHT_RIGHT to 5, Dir.STRAIGHT to 7, Dir.ARRIVE to 8, Dir.UTURN to 41, Dir.ROUNDABOUT to 65)
-    private val NAV_KEEPALIVE_MS = 900L   // every main tick (1 s)
     private var navMeters = -1.0
     private var navPrevM = 99999.0
     private var navDir = Dir.UNKNOWN
@@ -728,6 +733,7 @@ class BikeService : Service() {
     fun onNav(n: NavInfo?) = h.post {
         if (!prefs.navOn) return@post
         if (n == null) {
+            stopNavPump()
             if (navActive) send("nav-end", Protocol.nav(0, 0, 0, 7, 7))
             navActive = false; lastNavKey = ""; navMeters = -1.0; Bike.turn.value = null; turnPoint = null; turnShown = false
             return@post
@@ -756,17 +762,14 @@ class BikeService : Service() {
             if (navPrevM > 50 && m <= 50 && now != null) sounds.play(now)
         }
         navPrevM = m
-        // On the bike for the whole route (owner, 2026-11-27). Tested on the bike that day: the nav screen stays ~19 s after
-        // the last frame, but a refresh every 4–5 s flashes the normal page for 0.15–1 s each time, whatever the distance or
-        // fields; a refresh every second (5A 4E + 5B 4F) is steady. So this runs every second from the main tick. That's two
-        // 20-byte frames a second, a tiny share of the link; the official app sends four.
+        // On the bike for the whole route (owner, 2026-11-27). This only decides WHAT is on the cluster; [navPump] sends it
+        // on the official app's rhythm (measured in capture ride2b): direction every 0.5 s, road line 0.3 s after each one.
         if (!sendNow) return
         val n = Bike.nav.value ?: return
         val next = if (m >= 100) ((m + 25) / 50).toInt() * 50 else m.toInt()
         val key = "$next|${n.dir}|${n.road}|${n.minutesLeft}"
-        val t = System.currentTimeMillis()
-        if (key == lastNavKey && t - lastNavSent < NAV_KEEPALIVE_MS) return
-        lastNavKey = key; lastNavSent = t; navActive = true
+        if (key == lastNavKey && navActive && pumping) return   // same content and the pump is running (it stops for a test)
+        lastNavKey = key; navActive = true
         // Byte 9 = the arrow, in the Mappls (MapmyIndia) maneuver numbering the official app passes straight through
         // (ManeuverUtils.mapplsPictoV2Mapping): 0 left, 1 sharp left, 2 slight left, 3 right, 4 sharp right, 5 slight right,
         // 7 straight, 8 destination, 41 U-turn (right, India), 65 roundabout. Until 0.6.10 we always sent 7 = straight.
@@ -781,10 +784,30 @@ class BikeService : Service() {
             else -> 1
         }
         val sendNext = if (n.dir == Dir.ARRIVE || n.dir == Dir.UTURN) 0 else next
-        send("nav", Protocol.nav(sendNext, n.minutesLeft, n.leftM, picto, state))
+        navFrame = Protocol.nav(sendNext, n.minutesLeft, n.leftM, picto, state)
         val w = NavParser.word(n.dir)
-        send("nav-text", Protocol.navText(Protocol.clean(if (n.road.isBlank()) w else "$w ${n.road}".trim())))
+        textFrame = Protocol.navText(Protocol.clean(if (n.road.isBlank()) w else "$w ${n.road}".trim()))
+        if (!pumping) { pumping = true; h.removeCallbacks(navPump); h.post(navPump) }
     }
+
+    private var navFrame: ByteArray? = null
+    private var textFrame: ByteArray? = null
+    private var pumping = false
+
+    /**
+     * The official app's rhythm (capture ride2b, 887 pairs): `5A 4E` every 0.5 s, `5B 4F` 0.3 s after it, status every 2 s.
+     * Ronin Dash used to send both back to back once a second, or every 5 s, and the cluster flashed its normal page.
+     */
+    private val navPump = object : Runnable {
+        override fun run() {
+            if (!navActive || !ready || ClusterTests.running) { pumping = false; return }
+            navFrame?.let { send("nav", it) }
+            h.postDelayed({ if (navActive && ready && !ClusterTests.running) textFrame?.let { send("nav-text", it) } }, 300)
+            h.postDelayed(this, 500)
+        }
+    }
+
+    private fun stopNavPump() { pumping = false; h.removeCallbacks(navPump); navFrame = null; textFrame = null }
 
     private fun roundM(m: Double) = if (m >= 100) (m / 10).roundToInt() * 10 else max(0, m.roundToInt())
 
@@ -1065,6 +1088,7 @@ class BikeService : Service() {
     }
 
     private fun brightnessTick() {
+        if (ClusterTests.running) { clSteady = 0; return }   // a cluster test is talking to the bike: nothing else
         val mounted = sensors.mounted && sensors.lux >= 0
         val trust = ready && prefs.clusterBright && mounted && !Bike.clusterManual.value && Bike.clusterLevel.value != 0
         if (!trust) { clSteady = 0; return }
