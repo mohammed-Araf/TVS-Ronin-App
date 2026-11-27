@@ -187,6 +187,17 @@ class Prefs(ctx: Context) {
     /** Fuel gauge bars when the bike last went off, to spot a fill while it was parked. */
     var lastBars by i("lastBars", -1)
 
+    // ---- handlebar buttons (Buttons.kt)
+    /** Starter gestures are off until the rider turns them on (pressing the starter with the engine running must be safe on their bike). */
+    var starterOn by b("starterOn", false)
+    var modeOn by b("modeOn", true)
+    var actIHold by s("actIHold", "assist")
+    var actModeDouble by s("actModeDouble", "map")
+    var actModeLong by s("actModeLong", "dash")
+    var actStarter1 by s("actStarter1", "next")
+    var actStarter2 by s("actStarter2", "prev")
+    var actStarterLong by s("actStarterLong", "play")
+
     // ---- warm-up
     /** Engine temperature at which the engine counts as warm (°C). */
     var warmC by i("warmC", 60)

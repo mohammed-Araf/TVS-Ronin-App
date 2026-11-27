@@ -123,6 +123,8 @@ data class BikeState(
     val gear: Int = -1, val neutral: Boolean = false, val leftInd: Boolean = false, val rightInd: Boolean = false,
     val highBeam: Boolean = false, val milLamp: Boolean = false, val absLamp: Boolean = false,
     val clutch: Boolean = false, val sideStand: Boolean = false, val engineOn: Boolean = false,
+    /** Starter button held (0x11 byte 3 bit 0x10 or byte 6 bit 0x20). */
+    val starter: Boolean = false,
     val rideMode: Int = 0, val button: Int = 0, val rangeKm: Int = 0, val tripKm: Double = 0.0,
     val engineTempC: Int? = null, val intakeC: Int? = null, val batteryV: Double? = null,
     val tripAKm: Double = 0.0, val tripBKm: Double = 0.0, val dteKm: Int = 0,
@@ -147,7 +149,7 @@ data class BikeState(
                 shuttingDown = u[11] == 0x80,
             )
             0x11 -> copy(
-                gear = u[5] and 0x0F, clutch = bit(u[3], 0x01), sideStand = bit(u[3], 0x40),
+                gear = u[5] and 0x0F, clutch = bit(u[3], 0x01), sideStand = bit(u[3], 0x40), starter = bit(u[3], 0x10) || bit(u[6], 0x20),
                 neutral = bit(u[13], 0x01), leftInd = bit(u[13], 0x02), rightInd = bit(u[13], 0x04),
                 highBeam = bit(u[13], 0x08), milLamp = bit(u[13], 0x10), absLamp = bit(u[13], 0x20),
                 engineOn = bit(u[15], 0x40), rideMode = u[17] and 0x0F, clusterLevel = u[17] shr 4,

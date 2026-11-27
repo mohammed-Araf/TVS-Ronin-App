@@ -192,19 +192,7 @@ fun SettingsScreen(modifier: Modifier) {
 
         HoldSection(prefs)
 
-        Section("I button") {
-            var a by remember { mutableStateOf(prefs.assist) }
-            Text("Hold 2–3 seconds, then let go", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 12.dp))
-            listOf("default" to "Phone's assistant (Google Assistant or Gemini)", "gemini" to "Gemini app", "none" to "Nothing").forEach { (k, label) ->
-                Row(Modifier.fillMaxWidth().clickable { a = k; prefs.assist = k }, verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(a == k, { a = k; prefs.assist = k }); Text(label, style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-            Divider()
-            SwitchItem("Show \"Listening\" on the bike", initial = prefs.vaFeedback) { prefs.vaFeedback = it }
-            Hint("During a call: a tap rejects; hold about 2½ seconds and let go to answer. During a crash alert: hold to say you're OK. " +
-                "You can also ask the assistant to \"set bike brightness up\" (app shortcuts).")
-        }
+        ButtonsSection(prefs)
 
         Section("Trips and fuel") {
             SwitchItem("Record trips automatically", initial = prefs.tripRecord) { prefs.tripRecord = it }
@@ -572,6 +560,73 @@ private fun HoldSection(prefs: Prefs) {
             SliderItem("Slow means below", prefs.slowKmh, 5..60, 5, " km/h") { prefs.slowKmh = it }
         } }
         Hint("Emergencies are never held.")
+    }
+}
+
+/** Handlebar buttons: what each extra press does (Buttons.kt). Normal button jobs (ride mode, calls) never change. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun ButtonsSection(prefs: Prefs) {
+    Section("Handlebar buttons") {
+        Hint("Tap any press below to choose what it does: songs, volume, map, dashboard, assistant or nothing.")
+        Text("I button", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
+        ActionPick("Hold 2–3 s, then let go", prefs.actIHold) { prefs.actIHold = it }
+        var a by remember { mutableStateOf(prefs.assist) }
+        Text("Assistant", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        listOf("default" to "Phone's assistant (Google Assistant or Gemini)", "gemini" to "Gemini app", "none" to "Nothing").forEach { (k, label) ->
+            Row(Modifier.fillMaxWidth().clickable { a = k; prefs.assist = k }, verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(a == k, { a = k; prefs.assist = k }); Text(label, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        SwitchItem("Show \"Listening\" on the bike", initial = prefs.vaFeedback) { prefs.vaFeedback = it }
+        Hint("During a call: a tap rejects; hold about 2½ seconds and let go to answer. During a crash alert: hold to say you're OK.")
+        Divider()
+
+        var modeOn by remember { mutableStateOf(prefs.modeOn) }
+        SwitchItem("Mode button extras", "One press still changes the ride mode", prefs.modeOn) { modeOn = it; prefs.modeOn = it }
+        Appear(modeOn) {
+            Column {
+                ActionPick("Double press", prefs.actModeDouble) { prefs.actModeDouble = it }
+                ActionPick("Hold", prefs.actModeLong) { prefs.actModeLong = it }
+                Hint("Double press flips the mode and back (Urban → Rain → Urban), so you end in the same mode. Engine on only. Untested on the bike yet.")
+            }
+        }
+        Divider()
+
+        var starterOn by remember { mutableStateOf(prefs.starterOn) }
+        SwitchItem("Starter button while the engine runs", "Off until you've checked it's safe on your bike", prefs.starterOn) { starterOn = it; prefs.starterOn = it }
+        Appear(starterOn) {
+            Column {
+                ActionPick("One press", prefs.actStarter1) { prefs.actStarter1 = it }
+                ActionPick("Two presses", prefs.actStarter2) { prefs.actStarter2 = it }
+                ActionPick("Hold 1½ s", prefs.actStarterLong) { prefs.actStarterLong = it }
+                Hint("Counts only 5 s after the engine started, and never during a call. Check first, standing still in neutral: " +
+                    "if the starter motor whirrs or grinds when you press it with the engine running, turn this off.")
+            }
+        }
+        if (BikeService.running) {
+            Divider()
+            Text("Try an action now", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 10.dp))
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 10.dp)) {
+                BtnAction.entries.filter { it != BtnAction.NONE }.forEach { x ->
+                    androidx.compose.material3.OutlinedButton(onClick = { Bike.service?.doAction(x, "settings try") }) { Text(x.label) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActionPick(title: String, initial: String, set: (String) -> Unit) {
+    var v by remember { mutableStateOf(initial) }
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Item(title, BtnAction.of(v).label, onClick = { open = true })
+        androidx.compose.material3.DropdownMenu(open, { open = false }) {
+            BtnAction.entries.forEach { a ->
+                androidx.compose.material3.DropdownMenuItem({ Text(a.label) }, onClick = { v = a.key; set(a.key); open = false })
+            }
+        }
     }
 }
 

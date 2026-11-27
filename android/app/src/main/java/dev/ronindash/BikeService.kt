@@ -23,7 +23,9 @@ import android.content.pm.ServiceInfo
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.media.AudioManager
 import android.net.Uri
+import android.view.KeyEvent
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
@@ -87,6 +89,9 @@ class BikeService : Service() {
     private var callerSends = 0
     private var vaUntil = 0L
     private var lastAssistAt = 0L
+    private val starterTap = TapDetector()
+    private val modeBtn = ModeDetector()
+    private var engineOnAt = 0L
     private var tick = 0
     private var csvWriter: FileWriter? = null
     private val lastByType = HashMap<Int, ByteArray>()
@@ -412,6 +417,7 @@ class BikeService : Service() {
         when (u[1]) {
             0x10 -> {
                 onButtons(u[11])
+                onModeCode(u[11] and 0x07)
                 if (s.shuttingDown && !shutdownSeen) { shutdownSeen = true; Bike.log("[conn] bike is switching off (byte 11 = 0x80): saving"); trips.park(s); fuel.save() }
                 checkSpeed(s.speed); checkService(s.odoKm)
                 if (s.fuelBars != prevState.fuelBars || prevState.frames <= 1) onFuelBars(prevState.fuelBars, s.fuelBars)
@@ -429,7 +435,11 @@ class BikeService : Service() {
                 lampOnReadings = if (s.milLamp || s.absLamp) lampOnReadings + 1 else 0
                 if (lampOnReadings == 2 && s.engineOn && prefs.sndWarn) sounds.cue("warning", "Check engine")
                 onClusterLevel(s.clusterLevel)
-                if (s.engineOn != lastEngineOn) { if (s.engineOn) onEngineStart(s) else Bike.warmup.value = null; lastEngineOn = s.engineOn }
+                if (s.engineOn != lastEngineOn) {
+                    if (s.engineOn) { engineOnAt = SystemClock.elapsedRealtime(); onEngineStart(s) } else { Bike.warmup.value = null; starterTap.reset() }
+                    lastEngineOn = s.engineOn
+                }
+                onStarterAndMode(s)
             }
             0x18 -> onTemp(s)
         }
@@ -453,9 +463,94 @@ class BikeService : Service() {
                 else -> clearDisplay()
             }
             3 -> {} // mode button: the bike handles riding modes itself
-            // One assistant per press: ignore repeats for 10 s so it never keeps popping up.
-            4 -> if (callState == TelephonyManager.EXTRA_STATE_IDLE && System.currentTimeMillis() - lastAssistAt > 10_000) launchAssistant()
+            // One action per press: ignore repeats for 10 s so the assistant never keeps popping up.
+            4 -> if (callState == TelephonyManager.EXTRA_STATE_IDLE && System.currentTimeMillis() - lastAssistAt > 10_000) {
+                lastAssistAt = System.currentTimeMillis()
+                doAction(BtnAction.of(prefs.actIHold), "I hold")
+            }
         }
+    }
+
+    // ================================================================= extra button gestures (Buttons.kt)
+
+    /** Engine running for 5 s (and turning), so the press that started it, or a stall restart, is never a gesture. */
+    private fun engineSettled(s: BikeState) = s.engineOn && engineOnAt > 0 &&
+        SystemClock.elapsedRealtime() - engineOnAt >= 5000 && (s.rpm == 0 || s.rpm >= 500)
+
+    private fun gesturesAllowed() = callState == TelephonyManager.EXTRA_STATE_IDLE && Bike.sos.value == null
+
+    private val starterPoll = Runnable { pollStarter() }
+
+    private fun onStarterAndMode(s: BikeState) {
+        val now = SystemClock.elapsedRealtime()
+        val ok = gesturesAllowed()
+        if (prefs.starterOn) {
+            val g = starterTap.frame(s.starter, engineSettled(s) && ok, now)
+            if (starterTap.note.isNotEmpty()) Bike.log("[btn] starter ${starterTap.note} (rpm ${s.rpm})")
+            g?.let { starterGesture(it) }
+            h.removeCallbacks(starterPoll)
+            if (starterTap.deadline > 0) h.postDelayed(starterPoll, (starterTap.deadline - now).coerceAtLeast(0) + 20)
+        }
+        if (prefs.modeOn) {
+            val g = modeBtn.mode(s.rideMode, s.engineOn && ok, now)
+            if (modeBtn.note.isNotEmpty()) Bike.log("[btn] mode ${modeBtn.note}")
+            g?.let { modeGesture(it) }
+        }
+    }
+
+    private fun onModeCode(c: Int) {
+        if (!prefs.modeOn) return
+        val g = modeBtn.code(c, Bike.state.value.engineOn && gesturesAllowed(), SystemClock.elapsedRealtime())
+        if (modeBtn.note.isNotEmpty()) Bike.log("[btn] mode ${modeBtn.note}")
+        g?.let { modeGesture(it) }
+    }
+
+    private fun pollStarter() { starterTap.poll(SystemClock.elapsedRealtime())?.let { starterGesture(it) } }
+
+    private fun starterGesture(g: Gesture) = doAction(BtnAction.of(when (g) {
+        Gesture.SINGLE -> prefs.actStarter1; Gesture.DOUBLE -> prefs.actStarter2; Gesture.LONG -> prefs.actStarterLong
+    }), "starter ${g.name.lowercase()}")
+
+    private fun modeGesture(g: Gesture) = doAction(BtnAction.of(when (g) {
+        Gesture.DOUBLE -> prefs.actModeDouble; Gesture.LONG -> prefs.actModeLong; Gesture.SINGLE -> "none"
+    }), "mode ${g.name.lowercase()}")
+
+    /** Runs a button action. Also used by Settings → "Try" so each action can be checked without the bike. */
+    fun doAction(a: BtnAction, from: String) = h.post {
+        Bike.log("[btn] $from → ${a.key}")
+        val am = getSystemService(AudioManager::class.java)
+        fun key(code: Int) {
+            am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
+            am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
+        }
+        fun vol(dir: Int) {
+            am.adjustStreamVolume(AudioManager.STREAM_MUSIC, dir, 0)
+            Bike.log("[btn] music volume ${am.getStreamVolume(AudioManager.STREAM_MUSIC)}/${am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)}" +
+                if (am.isStreamMute(AudioManager.STREAM_MUSIC)) " (muted)" else "")
+        }
+        when (a) {
+            BtnAction.NONE -> {}
+            BtnAction.NEXT -> key(KeyEvent.KEYCODE_MEDIA_NEXT)
+            BtnAction.PREV -> key(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+            BtnAction.PLAY -> key(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+            BtnAction.VOL_UP -> vol(AudioManager.ADJUST_RAISE)
+            BtnAction.VOL_DOWN -> vol(AudioManager.ADJUST_LOWER)
+            BtnAction.MUTE -> vol(AudioManager.ADJUST_TOGGLE_MUTE)
+            BtnAction.MAP -> openMap()
+            BtnAction.DASH -> openApp(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT), "dashboard")
+            BtnAction.ASSIST -> launchAssistant()
+        }
+    }
+
+    /** Brings Google Maps to the front (straight back into navigation if it's running); any map app if Maps isn't installed. */
+    private fun openMap() {
+        val maps = packageManager.getLaunchIntentForPackage("com.google.android.apps.maps")
+        openApp((maps ?: Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0"))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), "map")
+    }
+
+    private fun openApp(i: Intent, what: String) {
+        try { startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); Bike.log("[btn] opened $what") }
+        catch (e: Exception) { Bike.log("[btn] can't open $what: ${e.message}. Allow 'Display over other apps' in Settings.") }
     }
 
     // ================================================================= I-button actions

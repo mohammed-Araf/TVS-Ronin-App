@@ -16,6 +16,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -74,12 +75,94 @@ private val STEPS = listOf(
         listOf("Yes", "No", "Skip"), waitS = 20),
     Step("Call: answer", "Only if someone can call you. When the caller shows on the bike, HOLD I for 3 s.\n\nWas it answered?", listOf("Yes", "No", "Skip")),
     Step("Call: reject", "Only if someone can call. When the caller shows, press I once.\n\nWas it rejected?", listOf("Yes", "No", "Skip")),
+    Step("Starter safe?", "Engine running, in neutral, standing still. Turn on Settings → Handlebar buttons → Starter. Wait 5 s, then press the starter once, briefly.\n\nDid the starter motor whirr or grind?",
+        listOf("No, quiet", "Yes, it whirred", "Skip")),
+    Step("Starter: one press", "Play music. Press the starter once. In ~2 s the next song should play.\n\nDid it?", listOf("Yes", "No", "Skip"), waitS = 4),
+    Step("Starter: two presses", "Press the starter twice, quickly.\n\nDid the previous song play?", listOf("Yes", "No", "Next song instead", "Skip"), waitS = 4),
+    Step("Starter: hold", "Hold the starter for 2 s.\n\nDid the music pause / play?", listOf("Yes", "No", "Skip"), waitS = 4),
+    Step("Mode: double press", "Engine on. Press Mode twice, quickly.\n\nDid the map open? Is the ride mode back where it was?", listOf("Both yes", "Map only", "Neither", "Skip"), waitS = 5),
+    Step("Mode: hold", "With the map open, hold Mode for 3 s.\n\nDid the dashboard come back? Did the bike open a menu?", listOf("Worked", "Nothing", "Bike menu opened", "Skip"), waitS = 5),
     Step("Finished", "Ignition OFF. Everything is saved in the ride log file (Android/data/dev.ronindash/files/logs).", listOf("Finish")),
 )
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TestScreen(modifier: Modifier) {
+    var pane by rememberSaveable { mutableIntStateOf(0) }
+    val notes by Notes.list.collectAsState()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(Unit) { Notes.load(ctx) }
+    Column(modifier.fillMaxSize()) {
+        androidx.compose.material3.SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
+            listOf("Tests", if (notes.isEmpty()) "Issues" else "Issues (${notes.size})").forEachIndexed { i, label ->
+                SegmentedButton(pane == i, { pane = i },
+                    androidx.compose.material3.SegmentedButtonDefaults.itemShape(i, 2)) { Text(label, maxLines = 1) }
+            }
+        }
+        if (pane == 0) TestsPane(Modifier.weight(1f)) else IssuesPane(Modifier.weight(1f))
+    }
+}
+
+private val AGO = listOf<Pair<String, Int?>>("Not sure" to null, "Just now" to 0, "5 min ago" to 5, "15 min" to 15,
+    "30 min" to 30, "1 hour" to 60, "2 hours" to 120)
+
+/** Write down every issue seen on the ride; saved with the time and the ride log, read later over USB. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun IssuesPane(modifier: Modifier) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val notes by Notes.list.collectAsState()
+    var text by rememberSaveable { mutableStateOf("") }
+    var ago by rememberSaveable { mutableStateOf<Int?>(null) }
+    var confirm by remember { mutableStateOf(-1L) }
+    val hm = remember { java.text.SimpleDateFormat("EEE d MMM, HH:mm", java.util.Locale.getDefault()) }
+    val t = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
+    LazyColumn(modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item {
+            Panel {
+                Text("What went wrong?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("One issue per note. Each is saved with the time and that ride's log, so it can be matched to what the bike sent.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp, bottom = 8.dp))
+                OutlinedTextField(text, { text = it }, placeholder = { Text("e.g. turn arrow stayed on the bike after the turn") },
+                    minLines = 3, modifier = Modifier.fillMaxWidth())
+                Text("When did it happen?", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 10.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AGO.forEach { (label, m) ->
+                        androidx.compose.material3.FilterChip(ago == m, { ago = m }, { Text(label) })
+                    }
+                }
+                Button(onClick = { Notes.add(ctx, text, ago); text = ""; ago = null }, enabled = text.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(top = 6.dp)) { Text("Save issue") }
+            }
+        }
+        if (notes.isNotEmpty()) item {
+            Text("Saved (${notes.size}) · Android/data/dev.ronindash/files/notes", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        items(notes.asReversed(), key = { it.id }) { n ->
+            Panel {
+                Text(n.text, style = MaterialTheme.typography.bodyLarge)
+                Text(buildList {
+                    add(hm.format(java.util.Date(n.written)))
+                    n.happened?.let { add(if (n.agoMin == 0) "just then" else "happened ~${t.format(java.util.Date(it))}") }
+                    if (n.ride.isNotEmpty()) add(n.ride.removePrefix("ride_").removeSuffix(".csv"))
+                }.joinToString("  ·  "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = { if (confirm == n.id) { Notes.delete(n.id); confirm = -1 } else confirm = n.id }) {
+                        Text(if (confirm == n.id) "Tap again to delete" else "Delete",
+                            color = if (confirm == n.id) androidx.compose.ui.graphics.Color(0xFFE5484D) else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        item { androidx.compose.foundation.layout.Spacer(Modifier.heightIn(min = 16.dp)) }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TestsPane(modifier: Modifier) {
     var idx by rememberSaveable { mutableIntStateOf(0) }
     var note by rememberSaveable { mutableStateOf("") }
     var left by remember { mutableIntStateOf(0) }
