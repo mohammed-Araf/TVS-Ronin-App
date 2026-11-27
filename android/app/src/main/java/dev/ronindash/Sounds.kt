@@ -47,7 +47,7 @@ class Sounds(private val ctx: Context) {
 
         val EARCONS = listOf(
             "arrived", "connected", "disconnected", "engine_start", "engine_warm", "fuel_low", "ind_forgot", "ind_tick_both", "ind_tick_left", "ind_tick_right",
-            "ind_tock_both", "ind_tock_left", "ind_tock_right", "message", "missed_call", "reroute", "roundabout", "service", "speed",
+            "ind_tock_both", "ind_tock_left", "ind_tock_right", "keepalive", "message", "missed_call", "reroute", "roundabout", "service", "speed",
             "turn_now_left", "turn_now_right", "turn_soon_left", "turn_soon_right", "turn_soon_straight", "urgent", "uturn", "warning",
         )
         val VOICES = listOf(
@@ -114,6 +114,19 @@ class Sounds(private val ctx: Context) {
     fun play(name: String, delayMs: Long = 0, preview: Boolean = false) {
         val id = ids[name] ?: return
         h.postDelayed({ if (canPlay(preview)) { duck(1500); pool.play(id, 1f, 1f, 1, 0, 1f) } }, delayMs)
+    }
+
+    private var awakeStream = 0
+
+    /**
+     * While the indicator blinks: loop an inaudible sound so the Bluetooth link to the intercom stays open. Otherwise the
+     * link sleeps between sounds and the first part of each one (all of a short tick) is lost while it wakes up.
+     */
+    fun keepAwake(on: Boolean) {
+        if (on && awakeStream == 0) {
+            val id = ids["keepalive"] ?: return
+            if (canPlay(false)) awakeStream = pool.play(id, 1f, 1f, 0, -1, 1f)
+        } else if (!on && awakeStream != 0) { pool.stop(awakeStream); awakeStream = 0 }
     }
 
     /** A spoken phrase: a pre-rendered clip if we have it, otherwise the phone's best offline voice. */

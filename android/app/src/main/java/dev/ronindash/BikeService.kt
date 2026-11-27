@@ -862,7 +862,8 @@ class BikeService : Service() {
         override fun run() {
             val side = indSide()
             if (side != Bike.indicator.value) { Bike.indicator.value = side; Bike.log("[ind] ${side ?: "off"}") }
-            if (side == null) return
+            if (side == null) { sounds.keepAwake(false); return }
+            if (ready && prefs.sndInd) sounds.keepAwake(true)
             if (ready && prefs.sndInd) sounds.play((if (blinkPhase) "ind_tick_" else "ind_tock_") + side)
             blinkPhase = !blinkPhase
             h.postDelayed(this, 360)

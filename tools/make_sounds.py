@@ -91,6 +91,18 @@ def wood(f=1900, d=.035):
     return out
 
 
+def knock(f, d=.12):
+    """Indicator tick for a helmet: the woodblock knock plus a short tone under it. A 35 ms click alone was lost over
+    Bluetooth to the intercom (ride 2026-11-27): the link and the intercom's noise gate swallow anything that short."""
+    out = [0.0] * int(d * SR)
+    body = tone(f / 2, d, [(1, 1, 1), (2, .35, .6)], attack=.002, tau=.035)
+    for i, v in enumerate(wood(f, .04)):
+        out[i] += v
+    for i, v in enumerate(body):
+        out[i] += .7 * v
+    return out
+
+
 def sweep(f0, f1, d, tau=None):
     n = int(d * SR)
     ph, out = 0.0, []
@@ -105,8 +117,8 @@ def make(only=None):
     S = {}
     # --- indicators: tick in the ear on the side you're turning (hazard: both ears)
     for side, p in (("left", -.85), ("right", .85), ("both", 0)):
-        S[f"ind_tick_{side}"] = (Track(.08).add(wood(2000), pan=p), .22)
-        S[f"ind_tock_{side}"] = (Track(.08).add(wood(1650), pan=p), .2)
+        S[f"ind_tick_{side}"] = (Track(.14).add(knock(2000), pan=p), .45)
+        S[f"ind_tock_{side}"] = (Track(.14).add(knock(1650), pan=p), .42)
     # indicator left on: quick tick-tock-tick-tock, then a soft "hey" (two rising notes)
     t = Track(1.0)
     for k in range(4):
@@ -156,6 +168,12 @@ def make(only=None):
     # --- connection
     S["connected"] = (Track(.9).add(marimba(N["C5"])).add(marimba(N["G5"]), at=.14), .38)
     S["disconnected"] = (Track(1.0).add(marimba(N["G5"])).add(marimba(N["C5"]), at=.14).add(marimba(N["C4"], .6), at=.3), .42)
+
+    # keeps the Bluetooth link to the intercom awake while an indicator blinks (looped, inaudible: ~-70 dB noise)
+    t = Track(1.0)
+    rnd = random.Random(7)
+    t.add([rnd.random() * 2 - 1 for _ in range(SR)])
+    S["keepalive"] = (t, .0003)
 
     for name, (track, peak) in S.items():
         if only and name not in only:
