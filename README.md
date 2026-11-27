@@ -202,7 +202,7 @@ Bug reports are welcome on [GitHub](https://github.com/mohammed-Araf/TVS-Ronin-A
   - fuel and range that learn the bike from its own fuel gauge, no logging needed
   - display brightness on the dashboard (auto or slider), engine warm-up indicator
   - trip recording with a 3D route map, crash detection, guided bike-test screen and debug logging
-- **Since 0.5 (in the code, next build):**
+- **Version 0.6:**
   - handlebar button actions: starter single/double/hold, Mode double/hold and I hold, each customisable (music, volume,
     map, dashboard, assistant)
   - live button lamps in Test & log
