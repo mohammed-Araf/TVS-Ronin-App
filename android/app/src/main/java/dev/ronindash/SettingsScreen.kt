@@ -213,7 +213,7 @@ fun SettingsScreen(modifier: Modifier) {
 
         Section("App") {
             SwitchItem("Keep a log file", "For testing and bug reports", prefs.fileLog) { prefs.fileLog = it }
-            Divider(); Item("Version", "Ronin Dash 0.5 · unofficial, not affiliated with TVS Motor")
+            Divider(); Item("Version", "Ronin Dash ${BuildConfig.VERSION_NAME} · unofficial, not affiliated with TVS Motor")
             Hint("Don't use the phone while riding.")
         }
         Spacer(Modifier.height(8.dp))
