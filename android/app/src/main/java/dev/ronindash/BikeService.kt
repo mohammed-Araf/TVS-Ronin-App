@@ -226,6 +226,7 @@ class BikeService : Service() {
 
     private fun closeGatt() {
         ready = false; writing = false; queue.clear(); tx = null; lastCode = 0
+        navActive = false; lastNavKey = ""   // on reconnect the cluster needs the whole route again, road line too
         gatt?.let { try { it.disconnect(); it.close() } catch (_: Exception) {} }
         gatt = null
     }
@@ -715,6 +716,7 @@ class BikeService : Service() {
     private var lastNavKey = ""
     private var lastNavSent = 0L
     private val NAV_KEEPALIVE_MS = 5000L
+    private var lastNavText = ""
     private var navMeters = -1.0
     private var navPrevM = 99999.0
     private var navDir = Dir.UNKNOWN
@@ -762,6 +764,7 @@ class BikeService : Service() {
         val key = "$next|${n.dir}|${n.road}|${n.minutesLeft}"
         val t = System.currentTimeMillis()
         if (key == lastNavKey && t - lastNavSent < NAV_KEEPALIVE_MS) return
+        val fresh = !navActive
         lastNavKey = key; lastNavSent = t; navActive = true
         val (picto, state) = when {
             n.dir == Dir.ARRIVE -> 7 to 8
@@ -773,8 +776,11 @@ class BikeService : Service() {
         }
         val sendNext = if (n.dir == Dir.ARRIVE || n.dir == Dir.UTURN) 0 else next
         send("nav", Protocol.nav(sendNext, n.minutesLeft, n.leftM, picto, state))
+        // The road line only when it changes (or a route starts): every 5B 4F makes the cluster redraw the nav screen, a
+        // ~150 ms flash of its normal page; 5A 4E alone refreshes it without a flash (tested on the bike 2026-11-27).
         val w = NavParser.word(n.dir)
-        send("nav-text", Protocol.navText(Protocol.clean(if (n.road.isBlank()) w else "$w ${n.road}".trim())))
+        val text = Protocol.clean(if (n.road.isBlank()) w else "$w ${n.road}".trim())
+        if (fresh || text != lastNavText) { lastNavText = text; send("nav-text", Protocol.navText(text)) }
     }
 
     private fun roundM(m: Double) = if (m >= 100) (m / 10).roundToInt() * 10 else max(0, m.roundToInt())
