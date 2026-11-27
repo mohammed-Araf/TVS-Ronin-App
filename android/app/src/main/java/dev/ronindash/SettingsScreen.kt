@@ -594,14 +594,14 @@ private fun ButtonsSection(prefs: Prefs) {
         Divider()
 
         var starterOn by remember { mutableStateOf(prefs.starterOn) }
-        SwitchItem("Starter button while the engine runs", "Off until you've checked it's safe on your bike", prefs.starterOn) { starterOn = it; prefs.starterOn = it }
+        SwitchItem("Starter button while riding", "The engine ignores it once running", prefs.starterOn) { starterOn = it; prefs.starterOn = it }
         Appear(starterOn) {
             Column {
                 ActionPick("One press", prefs.actStarter1) { prefs.actStarter1 = it }
                 ActionPick("Two presses", prefs.actStarter2) { prefs.actStarter2 = it }
                 ActionPick("Hold 1½ s", prefs.actStarterLong) { prefs.actStarterLong = it }
-                Hint("Counts only 5 s after the engine started, and never during a call. Check first, standing still in neutral: " +
-                    "if the starter motor whirrs or grinds when you press it with the engine running, turn this off.")
+                Hint("Counts only 5 s after the engine started, and never during a call. Press firmly: the bike reports the button " +
+                    "a few times a second, so a very quick tap can be missed.")
             }
         }
         if (BikeService.running) {

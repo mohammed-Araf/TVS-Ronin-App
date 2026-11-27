@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -75,8 +77,9 @@ private val STEPS = listOf(
         listOf("Yes", "No", "Skip"), waitS = 20),
     Step("Call: answer", "Only if someone can call you. When the caller shows on the bike, HOLD I for 3 s.\n\nWas it answered?", listOf("Yes", "No", "Skip")),
     Step("Call: reject", "Only if someone can call. When the caller shows, press I once.\n\nWas it rejected?", listOf("Yes", "No", "Skip")),
-    Step("Starter safe?", "Engine running, in neutral, standing still. Turn on Settings → Handlebar buttons → Starter. Wait 5 s, then press the starter once, briefly.\n\nDid the starter motor whirr or grind?",
-        listOf("No, quiet", "Yes, it whirred", "Skip")),
+    Step("Starter seen?", "Engine running. Watch the Starter lamp and count at the top of this screen. Press the starter firmly for about half a second.\n\nDid the lamp light and the count go up?",
+        listOf("Yes", "No"), waitS = 3),
+    Step("Starter: quick tap", "Now tap the starter as quickly as you can, once.\n\nDid the count go up?", listOf("Yes", "No"), waitS = 3),
     Step("Starter: one press", "Play music. Press the starter once. In ~2 s the next song should play.\n\nDid it?", listOf("Yes", "No", "Skip"), waitS = 4),
     Step("Starter: two presses", "Press the starter twice, quickly.\n\nDid the previous song play?", listOf("Yes", "No", "Next song instead", "Skip"), waitS = 4),
     Step("Starter: hold", "Hold the starter for 2 s.\n\nDid the music pause / play?", listOf("Yes", "No", "Skip"), waitS = 4),
@@ -251,6 +254,9 @@ private fun Diagnostics() {
         }
     }
     val assoc = remember { CompanionLink.isAssociated(ctx) }
+    val st by Bike.state.collectAsState()
+    val seen by Bike.starterSeen.collectAsState()
+    val lastBtn by Bike.lastBtn.collectAsState()
     val warn = androidx.compose.ui.graphics.Color(0xFFE5484D)
     Column {
         if (failing.isNotEmpty()) Text("Bike data looks wrong: ${failing.joinToString()}", color = warn, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
@@ -259,6 +265,24 @@ private fun Diagnostics() {
             batt?.let { add("battery this ride $it%") }
             add(if (assoc) "Android wakes the app" else "not linked to Android (Settings → Bike)")
         }.joinToString("  ·  "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            modifier = Modifier.padding(top = 4.dp)) {
+            Lamp("Starter $seen", st.starter); Lamp("Mode", st.button == 3); Lamp("I", st.button == 4); Lamp("Clutch", st.clutch)
+            Lamp("Engine", st.engineOn)
+        }
+        if (lastBtn.isNotEmpty()) Text("Last button: $lastBtn", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
         if (odo.isNotBlank()) Text(odo, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** A dot that lights while the bike reports the button / switch. */
+@Composable
+private fun Lamp(label: String, on: Boolean) {
+    val c by androidx.compose.animation.animateColorAsState(
+        if (on) androidx.compose.ui.graphics.Color(0xFF1FA463) else MaterialTheme.colorScheme.outlineVariant, label = "lamp")
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        androidx.compose.foundation.layout.Box(Modifier.padding(0.dp).then(Modifier.size(10.dp))
+            .background(c, androidx.compose.foundation.shape.CircleShape))
+        Text(label, style = MaterialTheme.typography.bodySmall)
     }
 }

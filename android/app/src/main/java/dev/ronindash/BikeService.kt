@@ -92,6 +92,7 @@ class BikeService : Service() {
     private val starterTap = TapDetector()
     private val modeBtn = ModeDetector()
     private var engineOnAt = 0L
+    private var lastStarterBit = false
     private var tick = 0
     private var csvWriter: FileWriter? = null
     private val lastByType = HashMap<Int, ByteArray>()
@@ -484,6 +485,8 @@ class BikeService : Service() {
     private fun onStarterAndMode(s: BikeState) {
         val now = SystemClock.elapsedRealtime()
         val ok = gesturesAllowed()
+        if (s.starter && !lastStarterBit) Bike.starterSeen.value++
+        lastStarterBit = s.starter
         if (prefs.starterOn) {
             val g = starterTap.frame(s.starter, engineSettled(s) && ok, now)
             if (starterTap.note.isNotEmpty()) Bike.log("[btn] starter ${starterTap.note} (rpm ${s.rpm})")
@@ -518,6 +521,7 @@ class BikeService : Service() {
     /** Runs a button action. Also used by Settings → "Try" so each action can be checked without the bike. */
     fun doAction(a: BtnAction, from: String) = h.post {
         Bike.log("[btn] $from → ${a.key}")
+        Bike.lastBtn.value = "$from → ${a.label}"
         val am = getSystemService(AudioManager::class.java)
         fun key(code: Int) {
             am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))

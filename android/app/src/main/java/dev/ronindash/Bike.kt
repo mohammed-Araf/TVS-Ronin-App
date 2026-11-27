@@ -65,6 +65,9 @@ object Bike {
     /** Phone battery % used this ride (Test & log). */
     val rideBatteryUsed = MutableStateFlow<Int?>(null)
     val odoVsGps = MutableStateFlow("")
+    /** Starter presses the app has seen since it started (any engine state), and the last button action, for Test & log. */
+    val starterSeen = MutableStateFlow(0)
+    val lastBtn = MutableStateFlow("")
     /** The bike switched off: a dashboard that opened itself closes again. */
     val closeDash = MutableStateFlow(false)
 
@@ -188,8 +191,9 @@ class Prefs(ctx: Context) {
     var lastBars by i("lastBars", -1)
 
     // ---- handlebar buttons (Buttons.kt)
-    /** Starter gestures are off until the rider turns them on (pressing the starter with the engine running must be safe on their bike). */
-    var starterOn by b("starterOn", false)
+    /** TVS starts the engine with the integrated starter-generator, and the ECU ignores the starter button once the engine runs,
+     *  so the button is free while riding. */
+    var starterOn by b("starterOn2", true)
     var modeOn by b("modeOn", true)
     var actIHold by s("actIHold", "assist")
     var actModeDouble by s("actModeDouble", "map")
