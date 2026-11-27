@@ -51,7 +51,9 @@ class NotifListener : NotificationListenerService() {
             if (!isNav) return
             val raw = "title=[$title] text=[$text] sub=[$sub]"
             if (Bike.lastMapsRaw.value != raw) { Bike.lastMapsRaw.value = raw; Bike.log("[maps] $raw") }
-            val info = NavParser.parse(title, text, sub) ?: return
+            // Maps' text often has no "turn left/right" any more: the arrow picture decides when the words don't.
+            val icon = MapsIcon.read(this, n, title, text)
+            val info = NavParser.parse(title, text, sub, icon?.dir) ?: return
             Bike.nav.value = info
             Bike.service?.onNav(info)
             return

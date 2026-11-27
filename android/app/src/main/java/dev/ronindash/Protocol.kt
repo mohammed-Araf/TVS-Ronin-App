@@ -55,7 +55,20 @@ object Protocol {
     fun sms(t: String) = textFrame(0x53, t, 16)
     fun text(t: String) = textFrame(0x4C, t)
     fun riderName(t: String) = textFrame(0x52, t)
-    fun navText(t: String) = textFrame(0x4F, t)
+    /** Nav road line: 16 characters + checksum in byte 18, as the official app sends it (17 ran into the checksum byte). */
+    fun navText(t: String) = withChecksum(textFrame(0x4F, t, 16))
+
+    /**
+     * Byte 18 = 255 − (sum of bytes 0–17 mod 256), on the plain frame. The official app does this for `5A 4E` and `5B 4F`
+     * only (every one in three captures; none of its other frames). Ronin Dash sent 00 there until 0.6.10.
+     */
+    fun withChecksum(f: ByteArray): ByteArray {
+        val b = f.copyOf()
+        var sum = 0
+        for (i in 0 until b.size - 2) sum += b[i].toInt() and 0xFF
+        b[b.size - 2] = (255 - sum % 256).toByte()
+        return b
+    }
 
     /** `5B 4A` mobile status. va: 0 idle, 32 listening. overspeed = the cluster's warning speed (steady value, no 0x64/0x00 race). */
     fun status(calls: Int, sms: Int, va: Int = 0, signal: Int = 4, batt: Int = 4, overspeed: Int = 120): ByteArray {
@@ -99,7 +112,7 @@ object Protocol {
             0x5A, 0x4E, n shr 8, n and 255, m shr 8, m and 255, l shr 16, (l shr 8) and 255, l and 255,
             picto, lines, 1, 0, if (alert) 1 else 0, state, 0, 0, 0, 0, 0xFF,
         )
-        return ByteArray(20) { f[it].toByte() }
+        return withChecksum(ByteArray(20) { f[it].toByte() })
     }
 
     // ---------------------------------------------------------------- debug view of bike frames
@@ -136,6 +149,9 @@ data class BikeState(
     val clusterLevel: Int = 0,
     /** Live byte 11 = 0x80: the bike is switching off (the link drops ~11 s later). */
     val shuttingDown: Boolean = false,
+    /** A live frame (0x10, the one with the fuel gauge) has arrived this connection. Until then fuelBars is just the
+     *  default 0, which once looked like an empty tank filled to 9 bars on every connect ("Filled up?" every ride). */
+    val fuelKnown: Boolean = false,
     /** Fields the data guard has no good value for (shown as "–", never a made-up number). */
     val unknown: Set<String> = emptySet(),
 ) {
@@ -149,7 +165,7 @@ data class BikeState(
             0x10 -> copy(
                 speed = u[2], odoKm = ((u[3] shl 16) or (u[4] shl 8) or u[5]) / 10.0, fuelBars = u[6],
                 avgSpeed = u[7], topSpeed = u[9], throttlePct = u[10] / 2, rpm = (u[16] shl 8) or u[17], button = u[11] and 0x07,
-                shuttingDown = u[11] == 0x80,
+                shuttingDown = u[11] == 0x80, fuelKnown = true,
             )
             0x11 -> copy(
                 gear = u[5] and 0x0F, clutch = bit(u[3], 0x01), sideStand = bit(u[3], 0x40), starter = bit(u[3], 0x10) || bit(u[6], 0x20),

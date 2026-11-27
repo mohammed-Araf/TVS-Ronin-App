@@ -90,7 +90,7 @@ private fun Color.luminanceApprox() = .3f * red + .59f * green + .11f * blue
 
 /**
  * The focus screens (mock FIXES 2, 20–21). Which one shows is decided by the bike, never by a button:
- * RIDING = engine on, moving, stand up, clutch out (stopped for 2 s → the normal dashboard) → live mileage gauge, next turn, range, trip, time.
+ * RIDING = engine on, stand up, moving or clutch held (stopped in neutral for 2 s → the normal dashboard) → live mileage gauge, next turn, range, trip, time.
  * FAST = ≥ the fast speed for 3 s → nothing to read: a compass at the next turn with the metres counting down, the bottom glowing
  *        in the mileage colour. PARKED at night → everything as icons and numbers. Swipe up = full dashboard for 10 s.
  */

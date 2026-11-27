@@ -715,6 +715,8 @@ class BikeService : Service() {
     private var navActive = false
     private var lastNavKey = ""
     private var lastNavSent = 0L
+    private val PICTO = mapOf(Dir.LEFT to 0, Dir.SHARP_LEFT to 1, Dir.SLIGHT_LEFT to 2, Dir.RIGHT to 3, Dir.SHARP_RIGHT to 4,
+        Dir.SLIGHT_RIGHT to 5, Dir.STRAIGHT to 7, Dir.ARRIVE to 8, Dir.UTURN to 41, Dir.ROUNDABOUT to 65)
     private val NAV_KEEPALIVE_MS = 900L   // every main tick (1 s)
     private var navMeters = -1.0
     private var navPrevM = 99999.0
@@ -765,13 +767,18 @@ class BikeService : Service() {
         val t = System.currentTimeMillis()
         if (key == lastNavKey && t - lastNavSent < NAV_KEEPALIVE_MS) return
         lastNavKey = key; lastNavSent = t; navActive = true
-        val (picto, state) = when {
-            n.dir == Dir.ARRIVE -> 7 to 8
-            n.dir == Dir.UTURN -> 41 to 0
-            n.isLeft && next < 65 -> 7 to 3
-            n.isRight && next < 65 -> 7 to 4
-            next >= 1000 -> 7 to 5
-            else -> 7 to 1
+        // Byte 9 = the arrow, in the Mappls (MapmyIndia) maneuver numbering the official app passes straight through
+        // (ManeuverUtils.mapplsPictoV2Mapping): 0 left, 1 sharp left, 2 slight left, 3 right, 4 sharp right, 5 slight right,
+        // 7 straight, 8 destination, 41 U-turn (right, India), 65 roundabout. Until 0.6.10 we always sent 7 = straight.
+        val picto = PICTO[n.dir] ?: 7
+        val turning = n.dir != Dir.STRAIGHT && n.dir != Dir.UNKNOWN
+        val state = when {
+            n.dir == Dir.ARRIVE -> 8
+            n.dir == Dir.UTURN -> 0
+            n.isLeft && next < 65 -> 3
+            n.isRight && next < 65 -> 4
+            next >= 1000 && !turning -> 5
+            else -> 1
         }
         val sendNext = if (n.dir == Dir.ARRIVE || n.dir == Dir.UTURN) 0 else next
         send("nav", Protocol.nav(sendNext, n.minutesLeft, n.leftM, picto, state))
@@ -940,6 +947,7 @@ class BikeService : Service() {
 
     /** Once a second: parked at a known station with the engine off, or a stop where the gauge then went up. */
     private fun fuelStopTick(s: BikeState) {
+        if (!s.fuelKnown) return
         if (s.speed == 0) stoppedS++ else stoppedS = 0
         if (stoppedS == 1) barsAtStop = s.fuelBars
         val a = Bike.ask.value
@@ -1168,7 +1176,7 @@ class BikeService : Service() {
             val before = fuel.tripL
             val km = fuel.step(1.0, rpm, s.throttlePct, if (live) s.speed.toDouble() else 0.0, gpsKmh, live && s.engineOn, prefs.tripRecord,
                 gear = if (live) s.gear else -1, engineC = if (live) s.engineTempC else null,
-                bars = if (live && s.frames > 2) s.fuelBars else -1, odoKm = if (live) s.odoKm else 0.0,
+                bars = if (live && s.fuelKnown) s.fuelBars else -1, odoKm = if (live) s.odoKm else 0.0,
                 clutchIn = live && (s.clutch || s.neutral))
             val litres = fuel.tripL - before
             crash.setRiding(live && (s.engineOn || s.speed > 0))
@@ -1214,13 +1222,13 @@ class BikeService : Service() {
     }
 
     /**
-     * The riding screen only while actually riding: engine on, moving, side stand up, clutch out (a clutch pulled at very
-     * low speed = stopping). Anything else for 2 s → the normal dashboard, so it's there at a signal without putting the stand
-     * down (owner, 2026-11-27). A clutch pull for a gear change while moving doesn't count.
-     * Fast = at or above the fast speed for 3 s, back below it −15 for 4 s.
+     * The riding screen while riding, and while waiting to ride: engine on, stand up, and moving or holding the clutch in
+     * (stopped at a signal in gear, about to go). Stopped with the clutch out (in neutral), the stand down or the engine off
+     * for 2 s → the normal dashboard (owner, 2026-11-27, twice: first "dashboard at a signal", then "not while I hold the
+     * clutch, I'm about to ride"). Fast = at or above the fast speed for 3 s, back below it −15 for 4 s.
      */
     private fun screenMode(s: BikeState, live: Boolean) {
-        val parkedNow = !live || !s.engineOn || s.sideStand || s.speed == 0 || (s.clutch && s.speed < 8)
+        val parkedNow = !live || !s.engineOn || s.sideStand || (s.speed == 0 && !s.clutch)
         parkS = if (parkedNow) parkS + 1 else 0
         fastS = if (live && s.speed >= prefs.fastKmh) fastS + 1 else 0
         slowS = if (s.speed < prefs.fastKmh - 15) slowS + 1 else 0

@@ -40,7 +40,9 @@ class FuelModel(private val store: Store) {
     val learner = FuelLearner(store.ml, store.tankL).also { if (store.ml.isBlank()) it.setPhysics(store.fuelCal) }   // keep what the old model learned
 
     companion object {
-        const val K = 5.27e-4
+        /** Stock flow scale. Was 5.27e-4; the owner's rides read ~8–10 km/l high (shown ~51–53 vs ~43 real, 2026-11-27), so
+         *  ×1.19 before any fill or gauge drop has taught the model. The learner still corrects it per bike from there. */
+        const val K = 6.27e-4
         const val L0 = .19
         const val TAU = 25.0
         const val CLAIM = 42.0

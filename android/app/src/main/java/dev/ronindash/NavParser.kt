@@ -20,10 +20,11 @@ object NavParser {
     private val mins = Regex("""(\d+)\s*min""", RegexOption.IGNORE_CASE)
     private val roadAfter = Regex("""\b(?:onto|on to|toward|towards|on|into|at)\s+(.+)$""", RegexOption.IGNORE_CASE)
 
-    fun parse(title: String, text: String, sub: String): NavInfo? {
+    /** iconDir = the direction read from Maps' arrow picture ([MapsIcon]); the words win when they say something. */
+    fun parse(title: String, text: String, sub: String, iconDir: Dir? = null): NavInfo? {
         val main = "$title $text"
         val low = main.lowercase(Locale.ROOT)
-        val dir = when {
+        val textDir = when {
             "u-turn" in low || "u turn" in low || "make a u" in low -> Dir.UTURN
             "roundabout" in low || "rotary" in low -> Dir.ROUNDABOUT
             "arriv" in low || "destination" in low -> Dir.ARRIVE
@@ -37,7 +38,10 @@ object NavParser {
             else -> Dir.UNKNOWN
         }
         val next = dist.find(main)?.let { toMeters(it) }
-        if (next == null && dir == Dir.UNKNOWN) return null
+        // No distance and no direction words: Maps' in-between update (title empty, just the road). Skip it, or it would
+        // reset the countdown to 0 m. The arrow picture alone isn't enough to act on.
+        if (next == null && textDir == Dir.UNKNOWN) return null
+        val dir = if (textDir == Dir.UNKNOWN && iconDir != null) iconDir else textDir
         val minutes = (hrs.find(sub)?.groupValues?.get(1)?.toIntOrNull() ?: 0) * 60 +
             (mins.find(sub)?.groupValues?.get(1)?.toIntOrNull() ?: 0)
         val left = dist.find(sub)?.let { toMeters(it) } ?: 0
