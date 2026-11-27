@@ -246,10 +246,12 @@ private fun Diagnostics() {
     val odo by Bike.odoVsGps.collectAsState()
     val batt by Bike.rideBatteryUsed.collectAsState()
     var memMb by remember { mutableIntStateOf(0) }
+    var audioOut by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
         while (true) {
             val rt = Runtime.getRuntime()
             memMb = (((rt.totalMemory() - rt.freeMemory()) + android.os.Debug.getNativeHeapAllocatedSize()) / 1_048_576).toInt()
+            audioOut = Sounds.privateOutput(ctx)
             delay(3000)
         }
     }
@@ -261,6 +263,7 @@ private fun Diagnostics() {
     Column {
         if (failing.isNotEmpty()) Text("Bike data looks wrong: ${failing.joinToString()}", color = warn, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
         Text(buildList {
+            add(audioOut?.let { "sounds → $it" } ?: "sounds muted (no earphones / intercom)")
             add("Memory $memMb MB")
             batt?.let { add("battery this ride $it%") }
             add(if (assoc) "Android wakes the app" else "not linked to Android (Settings → Bike)")

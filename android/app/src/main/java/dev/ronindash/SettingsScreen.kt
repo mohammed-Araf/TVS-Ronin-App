@@ -528,9 +528,9 @@ private fun SoundsSection(prefs: Prefs) {
         Text("Whose voice", style = MaterialTheme.typography.bodyLarge)
         var who by remember { mutableStateOf(prefs.voiceName) }
         Sounds.VOICES.forEach { (k, name, kind) ->
-            Row(Modifier.fillMaxWidth().clickable { who = k; prefs.voiceName = k; sounds().loadVoice(k); sounds().say("Bike connected", 300) },
+            Row(Modifier.fillMaxWidth().clickable { who = k; prefs.voiceName = k; sounds().loadVoice(k); sounds().say("Bike connected", 300, preview = true) },
                 verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(who == k, { who = k; prefs.voiceName = k; sounds().loadVoice(k); sounds().say("Bike connected", 300) })
+                RadioButton(who == k, { who = k; prefs.voiceName = k; sounds().loadVoice(k); sounds().say("Bike connected", 300, preview = true) })
                 Text(name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                 Text(kind, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -542,12 +542,13 @@ private fun SoundsSection(prefs: Prefs) {
         }
         androidx.compose.animation.AnimatedVisibility(open) { Column {
             SOUND_DEMO.forEach { (label, steps) ->
-                Item(label, onClick = { val s = sounds(); steps.forEach { (n, d) -> s.play(n, d) } }) {
+                Item(label, onClick = { val s = sounds(); steps.forEach { (n, d) -> s.play(n, d, preview = true) } }) {
                     Text("▶", color = MaterialTheme.colorScheme.primary)
                 }
             }
         } }
-        Hint("Short sounds, not sentences: music dips for a moment. Voice is kept for emergencies unless you pick More.")
+        Hint("Short sounds, not sentences: music dips for a moment. Voice is kept for emergencies unless you pick More. " +
+            "Sounds play only through an intercom, Bluetooth or wired earphones, never the phone speaker (the previews above are the exception).")
     }
 }
 

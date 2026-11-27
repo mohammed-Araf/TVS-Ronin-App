@@ -3,9 +3,11 @@ package dev.ronindash
 import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.SoundPool
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
@@ -18,10 +20,31 @@ import java.util.Locale
  * - Fixed phrases: res/raw/v_<voice>_<clip>.ogg, Kokoro-82M clips made by tools/make_voice.py. Only the chosen voice is loaded.
  * - Anything else (names): the phone's best offline TTS voice, Indian English first, never a network voice.
  * Played on the navigation-guidance stream with transient "may duck" focus, so music dips for a moment.
+ * Only through earphones, a Bluetooth headset or an intercom (wired, USB or Bluetooth), never the phone's own speaker:
+ * with nothing connected the sounds are skipped. Settings → Hear the sounds is the one exception (you tapped play).
  */
 @SuppressLint("DiscouragedApi")
 class Sounds(private val ctx: Context) {
     companion object {
+        private val PRIVATE_OUTPUTS = setOf(
+            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, AudioDeviceInfo.TYPE_BLUETOOTH_SCO, AudioDeviceInfo.TYPE_BLE_HEADSET,
+            AudioDeviceInfo.TYPE_BLE_SPEAKER, AudioDeviceInfo.TYPE_BLE_BROADCAST, AudioDeviceInfo.TYPE_HEARING_AID,
+            AudioDeviceInfo.TYPE_WIRED_HEADSET, AudioDeviceInfo.TYPE_WIRED_HEADPHONES, AudioDeviceInfo.TYPE_USB_HEADSET,
+            AudioDeviceInfo.TYPE_USB_DEVICE, AudioDeviceInfo.TYPE_AUX_LINE, AudioDeviceInfo.TYPE_LINE_ANALOG,
+        )
+        private val NAV_ATTRS = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+
+        /** Where helmet sounds would go right now: a headset / earphones / intercom name, or null = only the phone speaker. */
+        fun privateOutput(ctx: Context): String? {
+            val am = ctx.getSystemService(AudioManager::class.java) ?: return null
+            val devs = try {
+                if (Build.VERSION.SDK_INT >= 33) am.getAudioDevicesForAttributes(NAV_ATTRS)
+                else am.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList()
+            } catch (_: Exception) { am.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList() }
+            return devs.firstOrNull { it.type in PRIVATE_OUTPUTS }?.let { it.productName?.toString()?.ifBlank { null } ?: "headset" }
+        }
+
         val EARCONS = listOf(
             "arrived", "connected", "disconnected", "engine_start", "engine_warm", "fuel_low", "ind_forgot", "ind_tick_both", "ind_tick_left", "ind_tick_right",
             "ind_tock_both", "ind_tock_left", "ind_tock_right", "message", "missed_call", "reroute", "roundabout", "service", "speed",
@@ -71,24 +94,35 @@ class Sounds(private val ctx: Context) {
         CLIPS.values.toSet().forEach { c -> raw("v_${v}_$c")?.let { clipIds[c] = pool.load(ctx, it, 1) } }
     }
 
+    private var lastOut: Boolean? = null
+
+    /** True when a headset / earphones / intercom is the output; logs once each time that changes. */
+    private fun canPlay(preview: Boolean): Boolean {
+        if (preview) return true
+        val out = privateOutput(ctx)
+        val ok = out != null
+        if (ok != lastOut) { lastOut = ok; Bike.log(if (ok) "[sound] playing through $out" else "[sound] no earphones / intercom: helmet sounds muted (never the phone speaker)") }
+        return ok
+    }
+
     private fun duck(ms: Long) {
         am.requestAudioFocus(focus)
         h.removeCallbacks(release); h.postDelayed(release, ms + 400)
     }
 
     /** Play one earcon, optionally later. */
-    fun play(name: String, delayMs: Long = 0) {
+    fun play(name: String, delayMs: Long = 0, preview: Boolean = false) {
         val id = ids[name] ?: return
-        h.postDelayed({ duck(1500); pool.play(id, 1f, 1f, 1, 0, 1f) }, delayMs)
+        h.postDelayed({ if (canPlay(preview)) { duck(1500); pool.play(id, 1f, 1f, 1, 0, 1f) } }, delayMs)
     }
 
     /** A spoken phrase: a pre-rendered clip if we have it, otherwise the phone's best offline voice. */
-    fun say(text: String, delayMs: Long = 0) {
+    fun say(text: String, delayMs: Long = 0, preview: Boolean = false) {
         if (text.isBlank()) return
         loadVoice(prefs.voiceName)
         val clip = CLIPS[text.lowercase(Locale.ROOT).trimEnd('.', '!').trim()]?.let { clipIds[it] }
-        if (clip != null) { h.postDelayed({ duck(2500); pool.play(clip, 1f, 1f, 2, 0, 1f) }, delayMs); return }
-        h.postDelayed({ speak(text) }, delayMs)
+        if (clip != null) { h.postDelayed({ if (canPlay(preview)) { duck(2500); pool.play(clip, 1f, 1f, 2, 0, 1f) } }, delayMs); return }
+        h.postDelayed({ if (canPlay(preview)) speak(text) }, delayMs)
     }
 
     /**
