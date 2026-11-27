@@ -89,7 +89,8 @@ class BikeService : Service() {
     private var callerSends = 0
     private var vaUntil = 0L
     private var lastAssistAt = 0L
-    private val starterTap = TapDetector()
+    /** Seen ~2.5 s into a hold; kept 3 s more (≈6 s in all) = long. */
+    private val starterTap = TapDetector(longMs = 3000, doubles = false)
     private val modeBtn = ModeDetector()
     private var engineOnAt = 0L
     private var lastStarterBit = false
@@ -168,7 +169,7 @@ class BikeService : Service() {
         csvWriter?.close(); csvWriter = null
         Bike.service = null
         Bike.conn.value = Conn(Phase.OFF, "Bike off · connects by itself when you turn it on")
-        Bike.warmup.value = null; Bike.standAlarm.value = false; Bike.turn.value = null; Bike.hazard.value = false
+        Bike.warmup.value = null; Bike.standAlarm.value = false; Bike.turn.value = null; Bike.hazard.value = false; Bike.indicator.value = null; Bike.gtt.value = false
         super.onDestroy()
     }
 
@@ -464,8 +465,11 @@ class BikeService : Service() {
                 else -> clearDisplay()
             }
             3 -> {} // mode button: the bike handles riding modes itself
+            // On a call (yours going out, or answered): the hold is the only press the bike reports with no call pop-up on
+            // the cluster, so it hangs up. Outgoing calls never put the bike in call mode (ride 2026-11-27: couldn't hang up).
+            4 -> if (callState == TelephonyManager.EXTRA_STATE_OFFHOOK) endCall("hang up (I hold)")
             // One action per press: ignore repeats for 10 s so the assistant never keeps popping up.
-            4 -> if (callState == TelephonyManager.EXTRA_STATE_IDLE && System.currentTimeMillis() - lastAssistAt > 10_000) {
+            else if (callState == TelephonyManager.EXTRA_STATE_IDLE && System.currentTimeMillis() - lastAssistAt > 10_000) {
                 lastAssistAt = System.currentTimeMillis()
                 doAction(BtnAction.of(prefs.actIHold), "I hold")
             }
@@ -636,6 +640,10 @@ class BikeService : Service() {
             TelephonyManager.EXTRA_STATE_OFFHOOK -> if (prev == TelephonyManager.EXTRA_STATE_RINGING) {
                 // Answered (helmet, phone or bike): close the caller pop-up now, not only when the call ends.
                 callerSends = 3; clearDisplay()
+            } else if (prev == TelephonyManager.EXTRA_STATE_IDLE && prefs.calls && ready) {
+                // A call you made: the bike has no outgoing-call screen, so say so for a moment; hold I to hang up.
+                Bike.log("[call] outgoing call: hold I to hang up")
+                send("calling", Protocol.text("CALLING")); clearLater(4000)
             }
             TelephonyManager.EXTRA_STATE_IDLE -> {
                 if (prev == TelephonyManager.EXTRA_STATE_RINGING) clearLater(1500) // missed or rejected: close the caller pop-up
@@ -822,28 +830,39 @@ class BikeService : Service() {
     private var leftSeen = 0L
     private var rightSeen = 0L
     private var indOnS = 0
+    private var gttS = 0
     private var blinkPhase = false
 
-    /** The blink bit toggles with the lamp; "on" = seen lit in the last 1.5 s. Both together = hazard. */
+    /**
+     * The blink bit toggles with the lamp, but status frames come only every ~0.3–2 s and often land on the "off" half of
+     * the blink several times in a row (ride 2026-11-27: lit samples 2–3 s apart, up to ~3.3 s; with a 1.5 s window it kept dropping out, one lone tick each time).
+     * So "on" = seen lit in the last [IND_HOLD_MS]; the tick-tock keeps its own steady rhythm in between. Both = hazard.
+     */
     private fun onIndicators(s: BikeState) {
         val now = SystemClock.elapsedRealtime()
         if (s.leftInd) leftSeen = now
         if (s.rightInd) rightSeen = now
         val wasOn = indSide() != null
-        Bike.hazard.value = now - leftSeen < 1500 && now - rightSeen < 1500 && abs(leftSeen - rightSeen) < 800
-        if (!wasOn && indSide() != null) { h.removeCallbacks(blinker); h.post(blinker) }
+        Bike.hazard.value = now - leftSeen < IND_HOLD_MS && now - rightSeen < IND_HOLD_MS && abs(leftSeen - rightSeen) < 1500
+        val side = indSide()
+        if (side != Bike.indicator.value) { Bike.indicator.value = side; Bike.log("[ind] ${side ?: "off"}") }
+        if (!wasOn && side != null) { h.removeCallbacks(blinker); h.post(blinker) }
     }
+
+    private val IND_HOLD_MS = 3500L
 
     private fun indSide(): String? {
         val now = SystemClock.elapsedRealtime()
-        val l = now - leftSeen < 1500; val r = now - rightSeen < 1500
-        return when { Bike.hazard.value -> "both"; l -> "left"; r -> "right"; else -> null }
+        val l = now - leftSeen < IND_HOLD_MS; val r = now - rightSeen < IND_HOLD_MS
+        return when { Bike.hazard.value && l && r -> "both"; l && r -> if (leftSeen > rightSeen) "left" else "right"; l -> "left"; r -> "right"; else -> null }
     }
 
     /** Tick-tock in the ear on that side (both for hazard) while an indicator blinks. */
     private val blinker = object : Runnable {
         override fun run() {
-            val side = indSide() ?: return
+            val side = indSide()
+            if (side != Bike.indicator.value) { Bike.indicator.value = side; Bike.log("[ind] ${side ?: "off"}") }
+            if (side == null) return
             if (ready && prefs.sndInd) sounds.play((if (blinkPhase) "ind_tick_" else "ind_tock_") + side)
             blinkPhase = !blinkPhase
             h.postDelayed(this, 360)
@@ -1142,9 +1161,14 @@ class BikeService : Service() {
             val before = fuel.tripL
             val km = fuel.step(1.0, rpm, s.throttlePct, if (live) s.speed.toDouble() else 0.0, gpsKmh, live && s.engineOn, prefs.tripRecord,
                 gear = if (live) s.gear else -1, engineC = if (live) s.engineTempC else null,
-                bars = if (live && s.frames > 2) s.fuelBars else -1, odoKm = if (live) s.odoKm else 0.0)
+                bars = if (live && s.frames > 2) s.fuelBars else -1, odoKm = if (live) s.odoKm else 0.0,
+                clutchIn = live && (s.clutch || s.neutral))
             val litres = fuel.tripL - before
             crash.setRiding(live && (s.engineOn || s.speed > 0))
+            // GTT on screen: 2 s of agreeing readings to come on, 2 s to go off (throttle arrives only every ~1.3 s)
+            gttS = if (live && s.gtt) max(1, gttS + 1) else min(-1, gttS - 1)
+            val gttNow = if (gttS >= 2) true else if (gttS <= -2) false else Bike.gtt.value
+            if (gttNow != Bike.gtt.value) { Bike.gtt.value = gttNow; Bike.log("[gtt] ${if (gttNow) "on" else "off"} (gear ${s.gear}, ${s.speed} km/h, rpm ${s.rpm})") }
             if (prefs.tripRecord) trips.sample(s, loc, live, km, if (litres > 0) litres else 0.0)
             Bike.liveTripKm.value = if (trips.active) trips.liveKm else 0.0
             Bike.liveTripKmpl.value = fuel.live
@@ -1181,9 +1205,14 @@ class BikeService : Service() {
         )
     }
 
-    /** Parked = stopped with the side stand down. Fast = at or above the fast speed for 3 s, back below it −15 for 4 s. */
+    /**
+     * The riding screen only while actually riding: engine on, moving, side stand up, clutch out (a clutch pulled at very
+     * low speed = stopping). Anything else for 2 s → the normal dashboard, so it's there at a signal without putting the stand
+     * down (owner, 2026-11-27). A clutch pull for a gear change while moving doesn't count.
+     * Fast = at or above the fast speed for 3 s, back below it −15 for 4 s.
+     */
     private fun screenMode(s: BikeState, live: Boolean) {
-        val parkedNow = !live || (s.speed == 0 && s.sideStand)
+        val parkedNow = !live || !s.engineOn || s.sideStand || s.speed == 0 || (s.clutch && s.speed < 8)
         parkS = if (parkedNow) parkS + 1 else 0
         fastS = if (live && s.speed >= prefs.fastKmh) fastS + 1 else 0
         slowS = if (s.speed < prefs.fastKmh - 15) slowS + 1 else 0

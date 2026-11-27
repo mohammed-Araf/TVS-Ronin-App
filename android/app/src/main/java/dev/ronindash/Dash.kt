@@ -90,7 +90,7 @@ private fun Color.luminanceApprox() = .3f * red + .59f * green + .11f * blue
 
 /**
  * The focus screens (mock FIXES 2, 20–21). Which one shows is decided by the bike, never by a button:
- * RIDING = moving, or stopped with the stand up → live mileage gauge, next turn, range, trip, time.
+ * RIDING = engine on, moving, stand up, clutch out (stopped for 2 s → the normal dashboard) → live mileage gauge, next turn, range, trip, time.
  * FAST = ≥ the fast speed for 3 s → nothing to read: a compass at the next turn with the metres counting down, the bottom glowing
  *        in the mileage colour. PARKED at night → everything as icons and numbers. Swipe up = full dashboard for 10 s.
  */
@@ -116,6 +116,13 @@ fun FocusScreen(mode: RideMode, night: Boolean, onReveal: (Long) -> Unit) {
                 RideMode.PARK -> ParkedView(c, prefs, onReveal)
             }
         }
+        // indicator: a blinking arrow at that edge of the screen (both edges = hazard)
+        val ind by Bike.indicator.collectAsState()
+        ind?.let { IndicatorArrows(it, c) }
+        // GTT: the bike is pulling itself on idle (clutch out, throttle shut, slow)
+        val gtt by Bike.gtt.collectAsState()
+        AnimatedVisibility(gtt && mode != RideMode.PARK, Modifier.align(Alignment.TopStart).systemBarsPadding().padding(16.dp),
+            enter = fadeIn(), exit = fadeOut()) { GttBadge(c) }
         // not connected: one icon, no words
         AnimatedVisibility(conn.phase != Phase.LIVE && mode != RideMode.PARK, Modifier.align(Alignment.TopEnd).systemBarsPadding().padding(16.dp),
             enter = fadeIn(), exit = fadeOut()) { Ic("btoff", c.warn, 34.dp) }
@@ -126,6 +133,25 @@ fun FocusScreen(mode: RideMode, night: Boolean, onReveal: (Long) -> Unit) {
                 Text("︿", color = c.fg, fontSize = 18.sp); Text("Swipe up to see everything", color = c.fg, fontSize = 12.sp)
             }
         }
+    }
+}
+
+@Composable
+private fun GttBadge(c: DashColors) {
+    Text("GTT", color = c.bg, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp,
+        modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(c.fg).padding(horizontal = 10.dp, vertical = 4.dp))
+}
+
+@Composable
+private fun IndicatorArrows(side: String, c: DashColors) {
+    val t = rememberInfiniteTransition(label = "ind")
+    val a by t.animateFloat(1f, .12f, infiniteRepeatable(tween(360), RepeatMode.Reverse), label = "ia")
+    val green = if (c.night) Color(0xFF3DDC84).copy(alpha = c.fg.alpha) else Color(0xFF1FA463)
+    Box(Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 6.dp)) {
+        if (side == "left" || side == "both")
+            Text("◀", color = green.copy(alpha = a), fontSize = 64.sp, modifier = Modifier.align(Alignment.CenterStart))
+        if (side == "right" || side == "both")
+            Text("▶", color = green.copy(alpha = a), fontSize = 64.sp, modifier = Modifier.align(Alignment.CenterEnd))
     }
 }
 

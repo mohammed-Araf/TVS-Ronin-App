@@ -4,6 +4,9 @@ import java.text.Normalizer
 import java.util.Calendar
 import java.util.UUID
 
+/** Highest speed (km/h, speedometer) at which GTT pulls the bike in each gear; index = gear (0 = neutral, unused). */
+val GTT_MAX_KMH = intArrayOf(0, 8, 12, 15, 20, 25)
+
 /** Bars on the Ronin's fuel gauge when full (9; byte 6 reads 9 with a full tank). */
 const val FUEL_BARS = 9
 
@@ -163,6 +166,13 @@ data class BikeState(
             else -> this
         }
     }
+
+    /**
+     * Glide Through Technology working: clutch out, in gear, throttle shut, rolling at or under that gear's GTT speed
+     * (owner, 2026-11-27: 1st ≤ 8, 2nd ≤ 12, 3rd ≤ 15, 4th ≤ 20, 5th ≤ 25 km/h). The ECU feeds the engine by itself here.
+     */
+    val gtt: Boolean get() = engineOn && !clutch && !neutral && speed > 0 && throttlePct < 2 &&
+        gear in 1..5 && speed <= GTT_MAX_KMH[gear]
 
     val gearLabel: String get() = when { "gear" in unknown -> "–"; neutral || gear == 0 -> "N"; gear in 1..6 -> "$gear"; else -> "–" }
 

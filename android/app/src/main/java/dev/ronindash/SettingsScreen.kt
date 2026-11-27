@@ -598,9 +598,8 @@ private fun ButtonsSection(prefs: Prefs) {
         SwitchItem("Starter button while riding", "The engine ignores it once running", prefs.starterOn) { starterOn = it; prefs.starterOn = it }
         Appear(starterOn) {
             Column {
-                ActionPick("One press", prefs.actStarter1) { prefs.actStarter1 = it }
-                ActionPick("Two presses", prefs.actStarter2) { prefs.actStarter2 = it }
-                ActionPick("Hold 1½ s", prefs.actStarterLong) { prefs.actStarterLong = it }
+                ActionPick("Hold about 3 s", prefs.actStarter1) { prefs.actStarter1 = it }
+                ActionPick("Keep holding, about 6 s", prefs.actStarterLong) { prefs.actStarterLong = it }
                 Hint("Counts only 5 s after the engine started, and never during a call. Press firmly: the bike reports the button " +
                     "a few times a second, so a very quick tap can be missed.")
             }

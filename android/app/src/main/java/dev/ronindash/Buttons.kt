@@ -3,8 +3,10 @@ package dev.ronindash
 /**
  * Extra uses for the handlebar buttons while riding, without taking away what they normally do.
  *
- *  - Starter (0x11 byte 3 bit 0x10 / byte 6 bit 0x20): single, double, long. Only counts once the engine has been running
- *    for a few seconds, so starting the bike is never read as a gesture.
+ *  - Starter (0x11 byte 3 bit 0x10 / byte 6 bit 0x20): short hold and long hold. Only counts once the engine has been running
+ *    for a few seconds, so starting the bike is never read as a gesture. The bike only reports the starter after it has been
+ *    held ~2.5–3 s (ride 2026-11-27: a quick press never shows up), so a "short" press is really a ~3 s hold, and a long one
+ *    is kept held ~3 s more (~6 s in all). No double press: two 3 s holds aren't a gesture anyone wants.
  *  - Mode: a single press is the bike's own ride-mode change, so we only use double (Urban → Rain → Urban, the mode ends
  *    where it was) and long (held, the mode didn't change).
  *  - I: hold 2–3 s and let go (the only press the bike reports with no call on screen). Calls keep their own I-button rules.
@@ -35,6 +37,8 @@ enum class BtnAction(val key: String, val label: String) {
 class TapDetector(
     private val longMs: Long = 1500,
     private val doubleGapMs: Long = 1600,
+    /** false = no double press: a release is a SINGLE straight away. */
+    private val doubles: Boolean = true,
 ) {
     private var down = false
     private var downAt = 0L
@@ -67,6 +71,7 @@ class TapDetector(
             val held = now - downAt
             note = "up after $held ms"
             if (!armed || longFired) return null
+            if (!doubles) return Gesture.SINGLE
             taps++
             if (taps >= 2) { taps = 0; deadline = 0; return Gesture.DOUBLE }
             taps = 1; lastUpAt = now; deadline = now + doubleGapMs

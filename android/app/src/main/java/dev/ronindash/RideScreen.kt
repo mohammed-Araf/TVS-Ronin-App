@@ -248,8 +248,10 @@ private fun Stat(name: String, value: String, modifier: Modifier) {
 @Composable
 private fun Telltales(s: BikeState, live: Boolean) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Lamp("◀ Left", live && s.leftInd, Color(0xFF5CC27C))
-        Lamp("Right ▶", live && s.rightInd, Color(0xFF5CC27C))
+        val ind = Bike.indicator.collectAsState().value
+        Lamp("◀ Left", live && (ind == "left" || ind == "both"), Color(0xFF5CC27C))
+        Lamp("Right ▶", live && (ind == "right" || ind == "both"), Color(0xFF5CC27C))
+        Lamp("GTT", live && Bike.gtt.collectAsState().value, Color(0xFF5CC27C))
         Lamp("⚠ Hazard", live && Bike.hazard.collectAsState().value, Color(0xFFFF7A6E))
         Lamp("High beam", live && s.highBeam, Color(0xFF6EA8FF))
         Lamp("Neutral", live && s.neutral, Color(0xFF5CC27C))
@@ -261,6 +263,8 @@ private fun Telltales(s: BikeState, live: Boolean) {
         Lamp("I accept", live && s.button == 1, Color(0xFF6EA8FF))
         Lamp("I reject", live && s.button == 2, Color(0xFF6EA8FF))
         Lamp("Mode", live && s.button == 3, Color(0xFF6EA8FF))
+        // Starter (0x11 byte 3 / byte 6), with how many presses the app has seen: shows whether it reads the button at all.
+        Lamp("Starter ${Bike.starterSeen.collectAsState().value}", live && s.starter, Color(0xFF6EA8FF))
         Lamp(if (s.rideMode == 3) "Rain" else "Urban", live, Color(0xFF5CC27C))
         Lamp("Engine lamp", live && s.milLamp, Color(0xFFFFAD33))
         Lamp("ABS", live && s.absLamp, Color(0xFFFFAD33))

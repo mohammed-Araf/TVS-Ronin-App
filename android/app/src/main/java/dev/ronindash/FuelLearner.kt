@@ -68,10 +68,11 @@ class FuelLearner(saved: String = "", val tankL: Double = 14.0) {
     fun setPhysics(v: Double) { x[0] = v.coerceIn(.6, 1.6) }
 
     /** The features for one moment, each already in L/h. */
-    fun features(rpm: Int, throttle: Int, kmh: Double, accelKmhS: Double, gear: Int, engineC: Int?, warmC: Int, engineOn: Boolean): DoubleArray {
+    fun features(rpm: Int, throttle: Int, kmh: Double, accelKmhS: Double, gear: Int, engineC: Int?, warmC: Int, engineOn: Boolean,
+                 clutchIn: Boolean = false): DoubleArray {
         val f = DoubleArray(N)
         if (!engineOn || rpm <= 0) return f
-        val phys = FuelModel.lph(rpm, throttle, kmh)
+        val phys = FuelModel.lph(rpm, throttle, kmh, accelKmhS, clutchIn || gear == 0, gear)
         f[0] = phys
         f[1] = if (kmh < 3) .15 else 0.0                                   // idling: the idle mixture itself
         f[2] = .5 * (kmh / 100).let { it * it * it }                          // air drag grows with speed³ (≈0.5 L/h at 100)

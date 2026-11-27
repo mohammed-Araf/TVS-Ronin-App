@@ -47,6 +47,10 @@ object Bike {
     /** Engine warm-up after a cold start (null = warm, or the engine is off). */
     val warmup = MutableStateFlow<WarmUp?>(null)
     val hazard = MutableStateFlow(false)
+    /** Glide Through Technology is pulling the bike right now (2 s of agreeing readings). */
+    val gtt = MutableStateFlow(false)
+    /** Indicator blinking now: "left", "right", "both" (hazard) or null. */
+    val indicator = MutableStateFlow<String?>(null)
     /** Side stand down while moving (2 agreeing readings): the emergency screen. */
     val standAlarm = MutableStateFlow(false)
     /** Next turn, shown about 36 s before it (null = nothing close). */

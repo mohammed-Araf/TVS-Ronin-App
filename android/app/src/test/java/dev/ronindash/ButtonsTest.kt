@@ -33,6 +33,18 @@ class ButtonsTest {
         assertEquals(listOf(2100L to Gesture.LONG), g)
     }
 
+    @Test fun starterShortHoldFiresOnRelease() {
+        // the bike first reports it ~2.5 s into the hold; let go at ~4 s
+        val g = run(TapDetector(longMs = 3000, doubles = false), listOf(0L to false, 2500L to true, 3300L to true, 4000L to false))
+        assertEquals(listOf(4000L to Gesture.SINGLE), g)
+    }
+
+    @Test fun starterLongHold() {
+        val g = run(TapDetector(longMs = 3000, doubles = false),
+            listOf(0L to false, 2500L to true, 4000L to true, 5600L to true, 6500L to true, 7000L to false))
+        assertEquals(listOf(5600L to Gesture.LONG), g)
+    }
+
     @Test fun pressThatStartedBeforeEngineSettledIsIgnored() {
         val g = run(TapDetector(), listOf(0L to false, 500L to true, 1000L to false), allowed = false)
         assertEquals(emptyList<Pair<Long, Gesture>>(), g)

@@ -51,10 +51,24 @@ class FuelModel(private val store: Store) {
         private const val FULL = 100
         private const val REFUEL = 101
 
-        /** Stock fuel flow, before the per-bike correction. */
-        fun lph(rpm: Int, throttle: Int, kmh: Double): Double {
+        /** Engine load with the throttle shut but in gear and rolling: the ECU opens the idle air itself (Glide Through
+         *  Technology) to keep the bike pulling, so it burns fuel even though the throttle reads 0. */
+        const val GTT_LOAD = .40
+
+        /**
+         * Stock fuel flow, before the per-bike correction. accel = km/h per second, clutchIn = clutch lever pulled.
+         * Throttle shut is NOT "no fuel": with the clutch pulled (or stopped) the engine idles; in gear and rolling the ECU feeds
+         * it (GTT, and gentle lift-offs). Only real engine braking (high revs, slowing down clearly) counts as the fuel cut.
+         */
+        fun lph(rpm: Int, throttle: Int, kmh: Double, accel: Double = 0.0, clutchIn: Boolean = false, gear: Int = -1): Double {
             if (rpm <= 0) return 0.0
-            if (throttle < 2 && rpm > 1800 && kmh > 10) return .02
+            if (throttle < 2) {
+                if (clutchIn || kmh < 3) return K * rpm * L0                               // idling
+                if (gear in 1..5 && kmh <= GTT_MAX_KMH[gear] + 1) return K * rpm * GTT_LOAD  // GTT pulling the bike
+                if (gear < 1 && kmh <= 25) return K * rpm * GTT_LOAD                       // gear unknown, GTT speeds
+                if (rpm > 2500 && accel < -1.5) return .02                                  // engine braking: fuel cut
+                return K * rpm * L0                                                         // rolling off: idle air only
+            }
             val load = L0 + (1 - L0) * (1 - exp(-throttle / TAU))
             val rich = if (throttle > 70) 1 + .15 * (throttle - 70) / 30 else 1.0
             return K * rpm * load * rich
@@ -128,7 +142,7 @@ class FuelModel(private val store: Store) {
      * (−1 = not connected), [odoKm] = the bike's odometer (0 = unknown). Returns the distance used for this step (km).
      */
     fun step(dt: Double, rpm: Int, throttle: Int, bikeKmh: Double, gpsKmh: Double?, engineOn: Boolean, recording: Boolean,
-             gear: Int = -1, engineC: Int? = null, bars: Int = -1, odoKm: Double = 0.0): Double {
+             gear: Int = -1, engineC: Int? = null, bars: Int = -1, odoKm: Double = 0.0, clutchIn: Boolean = false): Double {
         if (odoKm > 0) odometer(odoKm)
         if (engineC != null) lastEngineC = engineC
         val dv = if (lastBike < 0) 0.0 else bikeKmh - lastBike
@@ -139,12 +153,13 @@ class FuelModel(private val store: Store) {
         val kmh = gpsKmh ?: (bikeKmh / store.speedoK)
         val moving = bikeKmh > 3
         val distKm = if (moving) kmh * dt / 3600 else 0.0            // no GPS creep while stopped
-        val feat = learner.features(rpm, throttle, bikeKmh, dv / dt, gear, engineC, store.warmC, engineOn)
+        val feat = learner.features(rpm, throttle, bikeKmh, dv / dt, gear, engineC, store.warmC, engineOn, clutchIn)
         lphNow = learner.predict(feat) * cal
         learner.accumulate(feat, dt)
         val litres = lphNow * dt / 3600
-        fV = fV * .6 + (if (moving) kmh else 0.0) * .4
-        fF = fF * .6 + lphNow * .4
+        // ~6 s window: letting go of the throttle for a moment mustn't throw the number to 99 and back
+        fV = fV * .85 + (if (moving) kmh else 0.0) * .15
+        fF = fF * .85 + lphNow * .15
         live = if (moving && fF > 0) min(99.0, fV / fF) else 0.0
         if (tank >= 0) { tank = max(0.0, tank - litres); tankVar += (.05 * litres).let { it * it } }
         store.burnRaw += litres
